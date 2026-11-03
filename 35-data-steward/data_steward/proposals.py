@@ -79,15 +79,19 @@ def _empty(value) -> bool:
     return blank(value) or value in ([], {})
 
 
-def _same(va, vb) -> bool:
+def _same(key, va, vb) -> bool:
+    """Case and outer spaces never make a difference. Inner spacing does only outside names: the matcher reads a
+    code or an email with its inner spaces, so "PW 1" and "PW  1" conflict there and must differ here."""
     if isinstance(va, str) and isinstance(vb, str):
+        if key == "name":
+            return " ".join(va.split()).casefold() == " ".join(vb.split()).casefold()
         return va.strip().casefold() == vb.strip().casefold()
     return va == vb
 
 
 def field_differences(a, b) -> list[dict]:
-    """Fields where the records disagree: both filled and different, or filled on one side only. Case and outer
-    spaces do not count as a difference. Redacted and sensitive fields are left out, by name."""
+    """Fields where the records disagree: both filled and different, or filled on one side only. See _same
+    for what counts as the same value. Redacted and sensitive fields are left out, by name."""
     hidden = _hidden(a, b)
     fa, fb = _fields(a, hidden), _fields(b, hidden)
     out = []
@@ -99,7 +103,7 @@ def field_differences(a, b) -> list[dict]:
         if ea or eb:
             out.append({"field": key, "kind": "only_b" if ea else "only_a", "a": None if ea else va,
                         "b": None if eb else vb})
-        elif not _same(va, vb):
+        elif not _same(key, va, vb):
             out.append({"field": key, "kind": "differs", "a": va, "b": vb})
     return out
 
@@ -130,6 +134,17 @@ def suggest_survivor(a, b, refs_a=None, refs_b=None) -> dict:
     return {"id": min(ida, idb), "rule": "smaller id", "skipped": skipped}
 
 
+def lookup(result: dict, rows: list[dict]) -> dict[str, dict]:
+    """id -> the row the matcher used: the first copy of each id, after the parties it withholds for privacy, so a
+    private copy of a repeated id never supplies a name or a field."""
+    by_id = {}
+    for row in rows:
+        if result["entity"] == "party" and row.get("privacy_state") != ORDINARY_PRIVACY:
+            continue
+        by_id.setdefault(str(row["id"]), row)
+    return by_id
+
+
 def build_proposals(result: dict, rows: list[dict], refs: dict | None = None) -> list[dict]:
     """One proposal per listed pair of a `find_duplicates` result, in the result's order.
 
@@ -137,11 +152,7 @@ def build_proposals(result: dict, rows: list[dict], refs: dict | None = None) ->
     reads references for proposed pairs only), so their survivor suggestion skips the reference step, even when an id
     of theirs was counted for a proposed pair.
     """
-    by_id = {}
-    for row in rows:
-        if result["entity"] == "party" and row.get("privacy_state") != ORDINARY_PRIVACY:
-            continue  # withheld by find_duplicates too: a private copy of a repeated id must not reach a proposal
-        by_id.setdefault(str(row["id"]), row)  # the first copy, as find_duplicates keeps it
+    by_id = lookup(result, rows)
     refs = refs or {}
     out = []
     for pair in result["pairs"]:
@@ -151,6 +162,7 @@ def build_proposals(result: dict, rows: list[dict], refs: dict | None = None) ->
         ra, rb = (refs.get(ida), refs.get(idb)) if proposed else (None, None)
         out.append({
             **pair,
+            "names": {ida: a.get("name"), idb: b.get("name")},
             "references": {ida: ra, idb: rb} if proposed else None,
             "survivor": suggest_survivor(a, b, ra and ra["total"], rb and rb["total"]),
             "differences": field_differences(a, b),

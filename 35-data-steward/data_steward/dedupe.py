@@ -371,3 +371,10 @@ def evaluate(result: dict, duplicates, distinct) -> dict:
         "excluded": sorted(excluded),
         "wrong": sorted((p["band"], tuple(p["ids"])) for p in result["pairs"] if tuple(p["ids"]) in known_distinct),
     }
+
+
+if __name__ == "__main__":
+    # The command lives in report.py, so importing this module never pulls in the network client.
+    from data_steward.report import main
+
+    raise SystemExit(main())

@@ -101,6 +101,13 @@ def test_field_differences_list_disagreements_and_one_sided_fields():
     assert not {"id", "created_at", "company_id", "_display", "tags"} & diffs.keys()
 
 
+def test_inner_spacing_differs_outside_names():
+    # The matcher reads codes and emails with their inner spaces, so a conflict it caps on must be listed here.
+    a = party("p1", "Halden\nRoe", customer_code="HR 1")
+    b = party("p2", "Halden Roe", customer_code="HR  1")
+    assert [d["field"] for d in proposals.field_differences(a, b)] == ["customer_code"]
+
+
 def test_redacted_and_sensitive_fields_are_never_shown():
     a = party("p1", "Halden Roe", pan="AAAPL1234C", gst_no="27AAAPL1234C1Z5", _redacted_fields=["gst_no"])
     b = party("p2", "Halden Roe", pan="BBBPL9876D", gst_no="29BBBPL9876D1Z2")
