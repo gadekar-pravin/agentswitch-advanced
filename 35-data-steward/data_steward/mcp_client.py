@@ -171,12 +171,10 @@ class McpClient:
         self._tools = None
         self.session.with_reauth(self._initialize)
 
-    @staticmethod
-    def _is_read_only(method, params) -> bool:
+    def _is_read_only(self, method, params) -> bool:
         if method in ("initialize", "tools/list"):
             return True
-        name = (params or {}).get("name", "") if method == "tools/call" else ""
-        return name.endswith((".list", ".get"))
+        return method == "tools/call" and self.allows(params["name"])
 
     def _rpc(self, method, params=None):
         with self._lock:
@@ -211,7 +209,17 @@ class McpClient:
     def has_tool(self, name: str) -> bool:
         return name in self.tool_names()
 
+    def allows(self, name: str) -> bool:
+        """Only tools the platform itself marks read-only and non-destructive. The seat's login can see update
+        tools for parties and items, and those are not marked destructive, so read-only is the test that counts.
+        A tool missing from the list, or missing either mark, is refused."""
+        hints = (self.tools().get(name) or {}).get("annotations") or {}
+        return hints.get("readOnlyHint") is True and hints.get("destructiveHint") is False
+
     def call(self, name: str, arguments: dict | None = None):
+        if not self.allows(name):
+            raise McpError("refused", f"{name} is not a read-only tool; this agent never changes a record",
+                           {"code": "refused"})
         result = self.session.with_reauth(
             lambda: self._rpc("tools/call", {"name": name, "arguments": arguments or {}}))
         blocks = result.get("content")

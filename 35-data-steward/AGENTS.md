@@ -23,7 +23,9 @@ working for before anything else that calls them. The exception is `python -m da
 
 - The agent proposes; it never changes a record. A person approves every change.
 - The seat's login can call more than it should use: update tools for parties and items are visible. Never call
-  them. A write guard in the client is still to be added.
+  them. `McpClient.call` refuses, before sending, any tool the platform does not mark both read-only and
+  non-destructive (`McpClient.allows`). Do not weaken or bypass that check; a later step that must write gets its
+  own reviewed path.
 - Approval requests, todos and bug reports are themselves records on a shared system: ask before creating any.
 - Never delete or overwrite data this seat did not create.
 - Ten wrong passwords in 15 minutes lock the login, so a failed login is never retried automatically.
@@ -90,7 +92,8 @@ reply. Never include a password or token.
 ## Platform quirks
 
 - JSON-RPC errors arrive as HTTP 200: every MCP call inspects the envelope.
-- Reads are retried on 502/503/504; writes never are.
+- Reads are retried on 502/503/504; writes never are. Whether a tool is a read comes from its annotations, the same
+  test the guard uses, not from its name.
 - The MCP endpoint may answer as JSON or as server-sent events; `_decode` handles both.
 - `.list` tools page with `limit` and `offset` (the cap is in `local/`). `McpClient.list_all` marks a result `truncated` whenever
   rows may have been left behind, and raises on a reply without a rows list rather than returning an empty table.

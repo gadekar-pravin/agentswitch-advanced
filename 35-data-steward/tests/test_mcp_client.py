@@ -43,17 +43,30 @@ def ok(result):
     return 200, {"jsonrpc": "2.0", "id": 1, "result": result}
 
 
-def client(monkeypatch, replies):
-    _http, calls = fake_http([ok({}), *replies])
+def tool(name, read_only, destructive=False):
+    return {"name": name, "annotations": {"readOnlyHint": read_only, "destructiveHint": destructive}}
+
+
+TOOLS = [tool("Party.list", True), tool("Party.update", False), tool("AddressBook.delete", False, True),
+         {"name": "Item.list"}]
+
+
+def client(monkeypatch, replies, tools=TOOLS):
+    """A client past initialize and, unless tools is None, past tools/list: `calls` then holds only what follows."""
+    _http, calls = fake_http([ok({}), *([ok({"tools": tools})] if tools is not None else []), *replies])
     monkeypatch.setattr(mcp_client, "_http", _http)
-    return McpClient(FakeSession()), calls
+    c = McpClient(FakeSession())
+    if tools is not None:
+        c.tools()
+        del calls[:]
+    return c, calls
 
 
 def test_jsonrpc_error_inside_http_200_raises(monkeypatch):
     c, _ = client(monkeypatch, [(200, {"jsonrpc": "2.0", "id": 2, "error": {
-        "code": -32601, "message": "Unknown tool: party.merge"}})])
+        "code": -32601, "message": "Unknown tool: Party.list"}})])
     with pytest.raises(McpError) as e:
-        c.call("party.merge", {})
+        c.call("Party.list", {})
     assert e.value.kind == "unknown_tool"
 
 
@@ -70,17 +83,31 @@ def test_text_content_is_parsed_as_json(monkeypatch):
 
 
 def test_expired_token_logs_in_once_and_retries(monkeypatch):
-    c, calls = client(monkeypatch, [AuthExpired("x"), ok({"tools": [{"name": "Party.list"}]})])
+    c, calls = client(monkeypatch, [AuthExpired("x"), ok({"tools": [{"name": "Party.list"}]})], tools=None)
     assert c.tool_names() == {"Party.list"}
     assert c.session.logins == 1
     assert calls[-1]["token"] == "new1"
 
 
-def test_writes_are_not_marked_read_only(monkeypatch):
-    c, calls = client(monkeypatch, [ok({"content": []}), ok({"content": []})])
+@pytest.mark.parametrize("name", ["Party.update", "AddressBook.delete", "Party.merge", "Item.list"])
+def test_guard_refuses_anything_not_marked_read_only_before_sending(monkeypatch, name):
+    # An update (not marked destructive), a delete, a tool not on the list, and one with no annotations at all.
+    c, calls = client(monkeypatch, [])
+    with pytest.raises(McpError) as e:
+        c.call(name, {"id": 1})
+    assert e.value.kind == "refused" and calls == []
+
+
+def test_guard_sends_a_read_only_tool_as_a_read(monkeypatch):
+    c, calls = client(monkeypatch, [ok({"content": []})])
     c.call("Party.list")
-    c.call("Party.update", {"id": 1})
-    assert [call["read_only"] for call in calls[1:]] == [True, False]
+    assert len(calls) == 1 and calls[0]["read_only"] is True
+
+
+def test_guard_loads_the_tool_list_before_the_first_call(monkeypatch):
+    c, calls = client(monkeypatch, [ok({"tools": TOOLS}), ok({"content": []})], tools=None)
+    c.call("Party.list")
+    assert [call["body"]["method"] for call in calls] == ["initialize", "tools/list", "tools/call"]
 
 
 def test_list_all_pages_until_total(monkeypatch):
