@@ -17,13 +17,15 @@ BAND_ORDER = {"propose": 0, "review": 1}
 # Weights are starting values; step 7 tunes them on the tuning set and then freezes them.
 PARTY_WEIGHTS = {"customer_code": 0.7, "email": 0.6, "phone": 0.5, "name": 0.6, "near_name": 0.25, "website": 0.2,
                  "city_postal": 0.15}
-ITEM_WEIGHTS = {"code": 0.7, "name": 0.5, "near_name": 0.25, "category": 0.1}
+ITEM_WEIGHTS = {"code": 0.7, "name": 0.5, "near_name": 0.25, "category": 0.1, "uom": 0.05}
 NEAR_NAME = 0.9
 
 # A strong value held by more records than this is a shared inbox, a switchboard or a dummy, not an identity.
 SHARED_LIMIT = 5
-# A name token in more records than this is too common to group on ("supply", "llc" survivors, a family name).
-TOKEN_LIMIT = 50
+# A grouping key held by more records than this is too common to group on (a name token like "supply", a family name,
+# a staff website, a placeholder name that slipped through). Skipping it keeps a 5000-row table from becoming millions
+# of pairs; the report counts what was skipped.
+BLOCK_LIMIT = 50
 
 PLACEHOLDERS = {"", "n/a", "na", "none", "null", "nil", "-", "--", "unknown", "tbd", "test", "x", "0"}
 LEGAL_ENDINGS = {"pvt", "private", "ltd", "limited", "llp", "llc", "inc", "incorporated", "corp", "corporation", "co",
@@ -47,20 +49,28 @@ def blank(value) -> bool:
 def strip_tag(name: str, test_tags) -> tuple[str, bool]:
     """Drop one leading [..] only when its content starts with a confirmed test-run tag. Any other bracket is part of
     the name: "[North] Acme" and "[South] Acme" must not collapse into one."""
-    m = _TAG.match(name or "")
-    if m and any(m.group(1).strip().casefold().startswith(t.casefold()) for t in test_tags):
+    name = "" if name is None else str(name)
+    m = _TAG.match(name)
+    # An empty tag would match every bracket.
+    if m and any(t and m.group(1).strip().casefold().startswith(t.casefold()) for t in test_tags):
         return name[m.end():], True
-    return name or "", False
+    return name, False
 
 
 def tokens(text: str) -> list[str]:
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().casefold().replace("&", " and ")
-    return re.sub(r"[^a-z0-9]+", " ", text).split()
+    """Words of any script, accents dropped. Dropping every non-ASCII letter would turn a Devanagari name into nothing,
+    and two such names would then never meet."""
+    text = "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c))
+    return re.sub(r"[\W_]+", " ", text.casefold().replace("&", " and ")).split()
 
 
 def norm_name(name: str, test_tags=()) -> str:
-    """Case, spacing, punctuation, accents, token order and legal endings do not make two names different."""
-    words = tokens(strip_tag(name, test_tags)[0])
+    """Case, spacing, punctuation, accents, token order and legal endings do not make two names different. A
+    placeholder name ("N/A", "Unknown") is no name: two of them are not evidence of anything."""
+    stripped = strip_tag(name, test_tags)[0]
+    if blank(stripped):
+        return ""
+    words = tokens(stripped)
     kept = [w for w in words if w not in LEGAL_ENDINGS] or words
     return " ".join(sorted(kept))
 
@@ -96,8 +106,13 @@ def active_roles(row) -> frozenset:
     roles = row.get("roles") or []
     if isinstance(roles, str):
         roles = [roles]
-    return frozenset((r if isinstance(r, str) else r.get("role")) for r in roles
-                     if isinstance(r, str) or (r.get("role") and r.get("active", True) is not False))
+    active = set()
+    for r in roles:
+        if isinstance(r, str):
+            active.add(r)
+        elif isinstance(r, dict) and r.get("role") and (r.get("active") is None or flag(r["active"])):
+            active.add(r["role"])
+    return frozenset(active)
 
 
 def first_address(row) -> dict:
@@ -107,7 +122,8 @@ def first_address(row) -> dict:
 
 def _party_keys(row, test_tags) -> dict:
     address = first_address(row)
-    city, postal = tokens(str(address.get("city") or "")), norm_code(address.get("postal"))
+    city = [] if blank(address.get("city")) else tokens(address["city"])
+    postal = norm_code(address.get("postal"))
     return {
         "customer_code": norm_code(row.get("customer_code")),
         "email": norm_email(row.get("email")),
@@ -124,6 +140,7 @@ def _item_keys(row, test_tags) -> dict:
         "sku": norm_code(row.get("sku")),
         "name": norm_name(row.get("name") or "", test_tags),
         "category": norm_code(row.get("category_id")),
+        "uom": norm_code(row.get("uom")),
     }
 
 
@@ -145,22 +162,28 @@ def _drop_shared(keys: dict[str, dict], strong) -> dict[str, int]:
     return dropped
 
 
-def _candidates(keys: dict[str, dict], block_on) -> set[tuple[str, str]]:
-    """Pairs sharing any exact key, or a name token that is not too common (so a typo in one word still meets)."""
+# Code and SKU can hold each other's value, so they group in one namespace: one item's SKU meets the other's code.
+_BLOCK_NAMESPACE = {"sku": "code"}
+
+
+def _candidates(keys: dict[str, dict], block_on) -> tuple[set[tuple[str, str]], int]:
+    """Pairs sharing any exact key, or a name word (so a typo in another word still meets). Returns the pairs and how
+    many groups were skipped for being too common."""
     blocks = defaultdict(set)
     for rid, k in keys.items():
         for key in block_on:
             if k[key]:
-                blocks[(key, k[key])].add(rid)
+                blocks[(_BLOCK_NAMESPACE.get(key, key), k[key])].add(rid)
         for word in set(k["name"].split()):
             if len(word) >= 3:
                 blocks[("token", word)].add(rid)
-    pairs = set()
-    for (kind, _), ids in blocks.items():
-        if kind == "token" and len(ids) > TOKEN_LIMIT:
+    pairs, skipped = set(), 0
+    for ids in blocks.values():
+        if len(ids) > BLOCK_LIMIT:
+            skipped += 1
             continue
         pairs.update(combinations(sorted(ids), 2))
-    return pairs
+    return pairs, skipped
 
 
 def _name_signal(a: str, b: str):
@@ -194,13 +217,16 @@ def _score_item(_a, _b, ka, kb):
     if codes_a & codes_b:
         signals.append("code")  # code and SKU can be aliases: one match counts once
     for key in ITEM_STRONG:
-        if ka[key] and kb[key] and ka[key] != kb[key] and not codes_a & codes_b:
+        # Same field, both filled, different, and neither value is one of the other item's identifiers: a real
+        # disagreement, even when the other field matches.
+        if ka[key] and kb[key] and ka[key] != kb[key] and ka[key] not in codes_b and kb[key] not in codes_a:
             conflicts.append(key)
     name = _name_signal(ka["name"], kb["name"])
     if name:
         signals.append(name)
-    if ka["category"] and ka["category"] == kb["category"]:
-        signals.append("category")
+    for key in ("category", "uom"):
+        if ka[key] and ka[key] == kb[key]:
+            signals.append(key)
     return signals, conflicts, [], ITEM_WEIGHTS
 
 
@@ -209,14 +235,16 @@ def _excluded_party(a, b) -> str | None:
         return "flagged as an allowed duplicate"
     if a.get("company_id") and b.get("company_id") and a["company_id"] != b["company_id"]:
         return "different companies"
-    if a.get("type") and b.get("type") and a["type"] != b["type"]:
+    if a.get("type") and b.get("type") and str(a["type"]).casefold() != str(b["type"]).casefold():
         return "individual and organisation"
     return None
 
 
 def _variant_codes(row) -> set[str]:
     variants = row.get("variants") or []
-    return {norm_code(v.get("sku") or v.get("code")) for v in variants if isinstance(v, dict)} - {""}
+    if not isinstance(variants, list):
+        return set()
+    return {norm_code(v.get(k)) for v in variants if isinstance(v, dict) for k in ("sku", "code")} - {""}
 
 
 def _excluded_item(a, b) -> str | None:
@@ -225,7 +253,9 @@ def _excluded_item(a, b) -> str | None:
     for key, reason in (("product_type", "different kinds"), ("type", "different kinds"), ("uom", "different units")):
         if a.get(key) and b.get(key) and str(a[key]).casefold() != str(b[key]).casefold():
             return reason
-    if norm_code(b.get("code")) in _variant_codes(a) or norm_code(a.get("code")) in _variant_codes(b):
+    codes_a = {norm_code(a.get("code")), norm_code(a.get("sku"))} - {""}
+    codes_b = {norm_code(b.get("code")), norm_code(b.get("sku"))} - {""}
+    if codes_b & _variant_codes(a) or codes_a & _variant_codes(b):
         return "variant of the other item"
     return None
 
@@ -240,18 +270,23 @@ def find_duplicates(entity: str, rows: list[dict], test_tags=()) -> dict:
     """Every candidate pair of `rows`, scored and banded.
 
     entity: "party" or "item". test_tags: confirmed test-run tags (from local/, never hard-coded here).
-    Parties under a privacy state other than the ordinary one are counted and left out before grouping, so no detail
-    of theirs reaches a pair.
+    Parties under a privacy state other than the ordinary one, or with none, are counted and left out before
+    grouping, so no detail of theirs reaches a pair. An excluded pair is listed with its reason only when it scored
+    review or better: a low-scoring pair that is also excluded is just dropped.
     """
     if entity not in ("party", "item"):
         raise ValueError(f"unknown entity {entity!r}")
-    withheld = 0
+    withheld = repeated = 0
     by_id = {}
     for row in rows:
         if entity == "party" and row.get("privacy_state") != ORDINARY_PRIVACY:
             withheld += 1
             continue
-        by_id[str(row["id"])] = row
+        rid = str(row["id"])
+        if rid in by_id:
+            repeated += 1  # pages that shifted while being read; the first copy is kept
+            continue
+        by_id[rid] = row
     key_fn, score_fn, exclude_fn, strong, block_on = (
         (_party_keys, _score_party, _excluded_party, PARTY_STRONG, ("customer_code", "email", "phone", "website"))
         if entity == "party" else
@@ -259,8 +294,9 @@ def find_duplicates(entity: str, rows: list[dict], test_tags=()) -> dict:
     keys = {rid: key_fn(row, test_tags) for rid, row in by_id.items()}
     ignored_shared = _drop_shared(keys, strong)
 
+    candidates, skipped_blocks = _candidates(keys, block_on + ("name",))
     pairs, excluded, dropped = [], [], 0
-    for ida, idb in sorted(_candidates(keys, block_on + ("name",))):
+    for ida, idb in sorted(candidates):
         a, b = by_id[ida], by_id[idb]
         signals, conflicts, caps, weights = score_fn(a, b, keys[ida], keys[idb])
         score = round(min(1.0, sum(weights[s] for s in signals)), 2)
@@ -291,14 +327,16 @@ def find_duplicates(entity: str, rows: list[dict], test_tags=()) -> dict:
     pairs.sort(key=lambda p: (BAND_ORDER[p["band"]], p["id"]))
     excluded.sort(key=lambda p: p["id"])
     return {"entity": entity, "rules_version": RULES_VERSION, "rows": len(rows), "withheld_private": withheld,
-            "ignored_shared": ignored_shared, "pairs": pairs, "excluded": excluded, "dropped": dropped}
+            "repeated_ids": repeated, "ignored_shared": ignored_shared, "skipped_blocks": skipped_blocks,
+            "pairs": pairs, "excluded": excluded, "dropped": dropped}
 
 
 def evaluate(result: dict, duplicates, distinct) -> dict:
     """Compare a result with known answers. `duplicates` and `distinct` are lists of id pairs.
 
     A known duplicate that is not in a listed band is a miss, whether grouping never met the pair or its score fell
-    below review. A known non-duplicate in a band is a wrong proposal for that band.
+    below review; one that an exclusion rule held back is reported apart, since no weight can bring it back. A known
+    non-duplicate in a band is a wrong proposal for that band.
     """
     known_dup = {tuple(sorted(map(str, p))) for p in duplicates}
     known_distinct = {tuple(sorted(map(str, p))) for p in distinct}
@@ -308,8 +346,10 @@ def evaluate(result: dict, duplicates, distinct) -> dict:
         pair = tuple(p["ids"])
         listed.add(pair)
         by_band[p["band"]]["right" if pair in known_dup else "wrong" if pair in known_distinct else "unlabelled"] += 1
+    excluded = {tuple(p["ids"]) for p in result["excluded"]} & known_dup
     return {
         "bands": {b: dict(c) for b, c in by_band.items()},
-        "missed": sorted(known_dup - listed),
+        "missed": sorted(known_dup - listed - excluded),
+        "excluded": sorted(excluded),
         "wrong": sorted((p["band"], tuple(p["ids"])) for p in result["pairs"] if tuple(p["ids"]) in known_distinct),
     }

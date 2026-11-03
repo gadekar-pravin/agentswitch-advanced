@@ -202,3 +202,90 @@ def test_tuning_set_never_proposes_a_known_non_duplicate(entity):
     result = dedupe.find_duplicates(entity, data[entity], test_tags=data["test_tags"])
     report = dedupe.evaluate(result, data["labels"][entity]["duplicates"], data["labels"][entity]["distinct"])
     assert [w for w in report["wrong"] if w[0] == "propose"] == []
+
+
+# Regressions from the step 4 code review.
+
+def test_item_same_code_but_different_skus_is_capped():
+    rows = [item("i1", "Safety Glove", "G-1", sku="G-RED"), item("i2", "Safety Glove", "G-1", sku="G-BLUE")]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert p["band"] == "review" and p["caps"] == ["sku differs"]
+
+
+def test_item_sku_meets_the_other_items_code_even_with_different_names():
+    rows = [item("i1", "Wood Pallet", "PL-220", sku="PAL-220"), item("i2", "Shipping Platform", "PAL-220")]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert "code" in p["signals"] and p["caps"] == []
+
+
+def test_matching_unit_of_measure_adds_a_little():
+    with_uom = pairs("item", [item("i1", "Copper Wire", "CW-1", category_id="k"),
+                              item("i2", "Copper Wire", "CW-2", category_id="k")])[("i1", "i2")]
+    assert "uom" in with_uom["signals"]
+
+
+@pytest.mark.parametrize("placeholder", ["N/A", "Unknown", "  tbd ", "-"])
+def test_placeholder_names_are_no_evidence(placeholder):
+    rows = [party("p1", placeholder, email="x@shared.example"), party("p2", placeholder, email="x@shared.example"),
+            party("p3", placeholder), party("p4", placeholder)]
+    found = pairs("party", rows)
+    assert ("p3", "p4") not in found and found[("p1", "p2")]["signals"] == ["email"]
+
+
+def test_placeholder_city_is_no_address_evidence():
+    addr = [{"city": "N/A", "postal": "00000-1"}]
+    rows = [party("p1", "Olsen Plumbing", email="o@olsen.example", addresses=addr),
+            party("p2", "Olsen Plumbing", email="o@olsen.example", addresses=addr)]
+    assert "city_postal" not in pairs("party", rows)[("p1", "p2")]["signals"]
+
+
+@pytest.mark.parametrize("inactive", ["false", 0, "0"])
+def test_role_active_flag_is_read_like_other_booleans(inactive):
+    rows = [party("p1", "Acme", email="a@acme.example", roles=[{"role": "customer", "active": True}]),
+            party("p2", "Acme", email="a@acme.example",
+                  roles=[{"role": "customer", "active": True}, {"role": "supplier", "active": inactive}])]
+    assert pairs("party", rows)[("p1", "p2")]["band"] == "propose"
+
+
+def test_malformed_roles_and_names_do_not_crash():
+    rows = [party("p1", 12345, roles=[None, 7, {"active": True}]), party("p2", None, roles="customer")]
+    assert dedupe.find_duplicates("party", rows)["pairs"] == []
+
+
+def test_party_type_comparison_ignores_case():
+    rows = [party("p1", "Jordan Pike", email="j@pike.example", type="Individual"),
+            party("p2", "Jordan Pike", email="j@pike.example", type="individual")]
+    assert pairs("party", rows)[("p1", "p2")]["band"] == "propose"
+
+
+def test_an_empty_test_tag_strips_nothing():
+    assert dedupe.strip_tag("[North] Acme", ("", "qa-run")) == ("[North] Acme", False)
+
+
+def test_a_very_common_grouping_key_is_skipped_and_counted():
+    rows = [party(f"p{i}", "Unique Name", website="staff.example") for i in range(dedupe.BLOCK_LIMIT + 1)]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["pairs"] == [] and result["skipped_blocks"] >= 1
+
+
+def test_a_repeated_id_is_counted_once():
+    rows = [party("p1", "Acme", email="a@acme.example"), party("p1", "Acme", email="a@acme.example")]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["pairs"] == [] and result["repeated_ids"] == 1
+
+
+def test_variant_match_checks_the_other_items_sku_too():
+    rows = [item("i1", "Safety Vest", "SV-100", category_id="k1", variants=[{"sku": "SV-100-XL"}]),
+            item("i2", "Safety Vest", "VEST-XL", sku="SV-100-XL", category_id="k1")]
+    assert [e["reason"] for e in dedupe.find_duplicates("item", rows)["excluded"]] == ["variant of the other item"]
+
+
+def test_names_in_other_scripts_still_meet():
+    assert dedupe.norm_name("राम शर्मा") == dedupe.norm_name("शर्मा राम") != ""
+
+
+def test_evaluate_reports_an_excluded_known_duplicate_apart_from_misses():
+    rows = [party("p1", "Jordan Pike", email="j@pike.example", type="individual"),
+            party("p2", "Jordan Pike", email="j@pike.example", type="organization")]
+    report = dedupe.evaluate(dedupe.find_duplicates("party", rows), duplicates=[["p1", "p2"]], distinct=[])
+    assert report["excluded"] == [("p1", "p2")] and report["missed"] == []
