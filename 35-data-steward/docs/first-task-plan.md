@@ -100,7 +100,7 @@ count makes the survivor rule skip the reference step and say so. Either way, ma
 | 2 | Ask the Eval Harness seat what they will check, and whether their copies of the systems hold seeded duplicates. Get the person's approval for the Keystone reads. | 0.5 | approval given 3 Nov; the message is still to send |
 | 3 | Keystone read: counts, both tables into `local/`, filter checks, child rows, what duplicates look like | 2 | done |
 | 4 | `data_steward/dedupe.py`: normalize, group, score, exclusions, with tests on hand-made pairs. A made-up tuning set of parties and items with known duplicates and known non-duplicates. It covers typos, case and spacing, legal endings, phone formats, the same email under two names, records sharing a name prefix that are different, ordinary names that start with a bracketed prefix, different records sharing a city and postcode, items with near names and different codes, role differences, and repeated test records. Run from grouping to report, so a duplicate the grouping never finds shows up as a miss. Every value is invented, test tags included (tests pass their own tag list); nothing is copied from a live record. | 8 | none |
-| 4b | The other person on the seat writes the held-back set the same way, with no entity shared with the tuning set, commits it, and does not tune. The person tuning does not open it until step 7. | (in 4) | none |
+| 4b | The other person on the seat writes the held-back set (see "Held-back set" below) the same way, with no entity shared with the tuning set, commits it, and does not tune. The person tuning does not open it until step 7. | (in 4) | none |
 | 5 | Proposals: survivor suggestion, field differences, reference counts | 4 | done |
 | 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | done; run on both systems 3 Nov |
 | 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | tuned and frozen at rules version 2 (3 Nov); the held-back run waits on 4b |
@@ -109,6 +109,46 @@ count makes the survivor rule skip the reference step and say so. Either way, ma
 
 **Not for 15 Nov:** a model in the loop, platform records, merges, missing-field
 and orphan checks, and the 12-task suite (30 Nov).
+
+## Held-back set (step 4b)
+
+The one honest check of the matcher: data the tuner never saw, run once against the frozen rules. The matcher is
+frozen at commit `ef06658` (rules version 2).
+
+**Who:** the other person on the seat (Dheeraj), not the person tuning (Pravin).
+
+**What to write:** one JSON file, `tests/data/dedupe_heldback.json`, in the same layout as
+`tests/data/dedupe_tuning.json`:
+
+- `about`: one line saying it is made-up and who wrote it.
+- `test_tags`: a list of invented test-run tags, for example `["zeta-run"]`. A tagged name starts with `[<tag> ...]`.
+- `party` and `item`: lists of records. Each needs a unique `id`, and uses the fields the tuning set uses (parties:
+  `name`, `privacy_state`, `company_id`, `roles`, `email`, `phone`, `website`, `customer_code`, `type`,
+  `allow_duplicate`, `addresses`; items: `name`, `code`, `sku`, `company_id`, `category_id`, `uom`, `type`,
+  `product_type`, `variants`). `roles` is a list like `[{"role": "customer", "active": true}]`, `addresses` a list
+  like `[{"city": "...", "postal": "..."}]`, `variants` a list like `[{"sku": "..."}]`. Leave a field out when the
+  record has no value.
+- `labels`: for each of `party` and `item`, `duplicates` and `distinct`, each a list of id pairs, such as
+  `[["p01", "p02"]]`. Label every pair you meant as a test, both ways: pairs that are the same record, and pairs that
+  look alike but are not.
+
+**Rules:**
+
+- Every value invented. Nothing copied from a live record, and no person, company or item that is also in the tuning
+  set (different names, emails, phones and codes).
+- Cover the cases in step 4 the way real data might show them, in your own words and examples: typos, case and
+  spacing, legal endings, phone formats, one email under two names, records sharing a name prefix that are different,
+  bracketed prefixes, shared city and postcode, near names with different codes, role differences, repeated test
+  records, and the exclusions under "Never proposed". Include cases you think the rules get wrong.
+- Write it from the plan, not from the code. Do not run the matcher on it, and do not change it after seeing a
+  result.
+- Commit it on your own branch and share it when it is done. The person tuning does not open it before then.
+
+**How it is run (step 7):** once, at the frozen commit, with `dedupe.find_duplicates` and `dedupe.evaluate` on each
+table. The result is recorded with the commit: how many pairs each band held and how many were right, wrong
+proposals, known misses, and exclusions. These are figures from made-up data and do not predict how often a live
+proposal is right. Any later change that can affect pairs, scores, bands or exclusions voids the check and needs a
+new held-back set.
 
 ## Checks that could change this plan
 
