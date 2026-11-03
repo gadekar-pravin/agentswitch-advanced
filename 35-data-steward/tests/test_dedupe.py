@@ -1,0 +1,204 @@
+import pytest
+
+from data_steward import dedupe
+
+TAGS = ("qa-run",)  # invented: the live tag list stays in local/
+
+
+def party(pid, name, **fields):
+    return {"id": pid, "name": name, "privacy_state": "normal", "company_id": "c1", "roles": [], **fields}
+
+
+def item(iid, name, code, **fields):
+    return {"id": iid, "name": name, "code": code, "company_id": "c1", "uom": "ea", "type": "product",
+            "product_type": "goods", "variants": [], **fields}
+
+
+def pairs(entity, rows, **kwargs):
+    return {tuple(p["ids"]): p for p in dedupe.find_duplicates(entity, rows, test_tags=TAGS, **kwargs)["pairs"]}
+
+
+def test_names_ignore_case_spacing_punctuation_order_and_legal_endings():
+    assert dedupe.norm_name("Bluepine  Logistics Pvt. Ltd.") == dedupe.norm_name("bluepine logistics private limited")
+    assert dedupe.norm_name("Chen, Wei") == dedupe.norm_name("Wei Chen")
+    assert dedupe.norm_name("Halden & Roe") == dedupe.norm_name("Halden and Roe")
+    assert dedupe.norm_name("Ltd") == "ltd"  # a name that is only a legal ending keeps it
+
+
+def test_only_confirmed_test_tags_are_stripped():
+    assert dedupe.strip_tag("[qa-run 7] Gristmill Foods", TAGS) == ("Gristmill Foods", True)
+    assert dedupe.strip_tag("[North] Kestrel Outfitters", TAGS) == ("[North] Kestrel Outfitters", False)
+    assert dedupe.norm_name("[North] Kestrel", TAGS) != dedupe.norm_name("[South] Kestrel", TAGS)
+
+
+@pytest.mark.parametrize("raw, expected", [("+1 (555) 201-3344", "5552013344"), ("555.201.3344", "5552013344"),
+                                           ("201-3344", ""), ("000-000-0000", ""), (None, "")])
+def test_phone_normalization(raw, expected):
+    assert dedupe.norm_phone(raw) == expected
+
+
+def test_flag_reads_strings_and_ints():
+    assert [dedupe.flag(v) for v in (True, 1, "true", "TRUE", False, 0, "false", None, "")] == [True] * 4 + [False] * 5
+
+
+def test_same_email_and_name_is_proposed():
+    rows = [party("p1", "Rivera Hardware", email="orders@rivera.example"),
+            party("p2", "rivera  HARDWARE", email="Orders@Rivera.example")]
+    p = pairs("party", rows)[("p1", "p2")]
+    assert p["band"] == "propose" and set(p["signals"]) == {"email", "name"} and p["id"] == "party:p1:p2"
+
+
+def test_empty_and_placeholder_values_never_match():
+    rows = [party("p1", "Ivy Florist", email="N/A", phone="0000000000"),
+            party("p2", "Copper Cafe", email="n/a", phone="000-000-0000"),
+            party("p3", "Olsen Plumbing"), party("p4", "Marlow Electric")]
+    assert pairs("party", rows) == {}
+
+
+def test_a_value_shared_by_many_records_is_ignored():
+    rows = [party(f"p{i}", f"Shop {chr(65 + i)}{chr(70 + i)}{chr(75 + i)}", phone="5550100100")
+            for i in range(dedupe.SHARED_LIMIT + 1)]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["pairs"] == [] and result["ignored_shared"] == {"phone": 1}
+
+
+def test_strong_value_conflict_caps_at_review():
+    rows = [party("p1", "Summit Dental", email="a@summit.example", phone="5552010001"),
+            party("p2", "Summit Dental", email="b@summit.example", phone="5552010001")]
+    p = pairs("party", rows)[("p1", "p2")]
+    assert p["score"] == 1.0 and p["band"] == "review" and "email differs" in p["caps"]
+
+
+def test_role_difference_caps_at_review_but_no_role_is_no_evidence():
+    supplier = [{"role": "supplier", "active": True}]
+    customer = [{"role": "customer", "active": True}]
+    rows = [party("p1", "Tidewater Marine", email="s@tide.example", roles=customer),
+            party("p2", "Tidewater Marine", email="s@tide.example", roles=supplier),
+            party("p3", "Fernhill Nursery", email="f@fern.example", roles=[]),
+            party("p4", "Fernhill Nursery", email="f@fern.example", roles=customer)]
+    found = pairs("party", rows)
+    assert found[("p1", "p2")]["band"] == "review" and found[("p1", "p2")]["caps"] == ["roles differ"]
+    assert found[("p3", "p4")]["band"] == "propose"
+
+
+def test_inactive_role_does_not_count():
+    rows = [party("p1", "Acme", email="a@acme.example", roles=[{"role": "customer", "active": True}]),
+            party("p2", "Acme", email="a@acme.example",
+                  roles=[{"role": "customer", "active": True}, {"role": "supplier", "active": False}])]
+    assert pairs("party", rows)[("p1", "p2")]["band"] == "propose"
+
+
+def test_score_below_review_is_dropped_and_counted():
+    rows = [party("p1", "Brightwater Optics"), party("p2", "Brightwatr Optics")]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["pairs"] == [] and result["dropped"] == 1
+
+
+@pytest.mark.parametrize("a, b, reason", [
+    ({"allow_duplicate": "true"}, {}, "flagged as an allowed duplicate"),
+    ({"company_id": "c1"}, {"company_id": "c2"}, "different companies"),
+    ({"type": "individual"}, {"type": "organization"}, "individual and organisation"),
+])
+def test_party_exclusions_are_listed_with_a_reason(a, b, reason):
+    rows = [party("p1", "Jordan Pike", email="j@pike.example", **a), party("p2", "Jordan Pike", email="j@pike.example", **b)]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["pairs"] == [] and [e["reason"] for e in result["excluded"]] == [reason]
+
+
+def test_a_missing_company_proves_nothing():
+    rows = [party("p1", "Acme", email="a@acme.example", company_id=None), party("p2", "Acme", email="a@acme.example")]
+    assert pairs("party", rows)[("p1", "p2")]["band"] == "propose"
+
+
+def test_private_parties_are_withheld_before_grouping():
+    rows = [party("p1", "Lena Ortiz", email="l@ortiz.example", privacy_state="restricted"),
+            party("p2", "Lena Ortiz", email="l@ortiz.example"), party("p3", "No State", privacy_state=None)]
+    result = dedupe.find_duplicates("party", rows)
+    assert result["withheld_private"] == 2 and result["pairs"] == [] and result["excluded"] == []
+    assert "p1" not in repr(result)
+
+
+def test_tagged_pair_keeps_its_band_and_is_marked():
+    rows = [party("p1", "[qa-run 1] Gristmill Foods"), party("p2", "[qa-run 2] Gristmill Foods"),
+            party("p3", "Gristmill Foods")]
+    found = pairs("party", rows)
+    assert found[("p1", "p2")]["tagged"] and found[("p1", "p3")]["tagged"]
+    assert found[("p1", "p2")]["band"] == "review"
+
+
+def test_shared_tag_alone_adds_nothing():
+    rows = [party("p1", "[qa-run 3] Northgate Tooling Inc"), party("p2", "[qa-run 3] Northgate Textiles LLC")]
+    assert pairs("party", rows) == {}
+
+
+def test_record_in_two_pairs_is_flagged_and_order_is_stable():
+    rows = [party("p3", "Kite Co", email="k@kite.example"), party("p1", "Kite", email="k@kite.example"),
+            party("p2", "Kite Company", email="k@kite.example"), party("p9", "Other", email="o@other.example")]
+    first = dedupe.find_duplicates("party", rows)
+    again = dedupe.find_duplicates("party", list(reversed(rows)))
+    assert first["pairs"] == again["pairs"] and [p["id"] for p in first["pairs"]] == [
+        "party:p1:p2", "party:p1:p3", "party:p2:p3"]
+    assert all(p["shared_record"] for p in first["pairs"])
+
+
+def test_items_same_code_are_proposed_and_code_sku_alias_counts_once():
+    rows = [item("i1", "Hex Bolt M8 x 40", "HB-M8-40"), item("i2", "hex bolt m8 x 40", "hb-m8-40"),
+            item("i3", "Wood Pallet", "PL-220", sku="PAL-220"), item("i4", "Wood Pallet", "PAL-220")]
+    found = pairs("item", rows)
+    assert found[("i1", "i2")]["band"] == "propose"
+    assert found[("i3", "i4")]["signals"].count("code") == 1 and found[("i3", "i4")]["caps"] == []
+
+
+def test_item_code_conflict_caps_at_review():
+    rows = [item("i1", "Nitrile Gloves Large", "GL-1", category_id="k1"),
+            item("i2", "Nitrile Gloves - Large", "GL-2", category_id="k1")]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert p["band"] == "review" and p["caps"] == ["code differs"]
+
+
+@pytest.mark.parametrize("a, b, reason", [
+    ({"uom": "m"}, {"uom": "kg"}, "different units"),
+    ({"product_type": "services"}, {}, "different kinds"),
+])
+def test_item_exclusions(a, b, reason):
+    rows = [item("i1", "Copper Wire", "CW-1", **a), item("i2", "Copper Wire", "CW-1", **b)]
+    assert [e["reason"] for e in dedupe.find_duplicates("item", rows)["excluded"]] == [reason]
+
+
+def test_variant_of_another_item_is_excluded():
+    # Scores as a review pair (same name and category, codes differ); the variant rule then excludes it.
+    rows = [item("i1", "Safety Vest", "SV-100", category_id="k1", variants=[{"sku": "SV-100-XL"}]),
+            item("i2", "Safety Vest", "SV-100-XL", category_id="k1")]
+    assert [e["reason"] for e in dedupe.find_duplicates("item", rows)["excluded"]] == ["variant of the other item"]
+
+
+def test_evaluate_counts_misses_and_wrong_proposals():
+    rows = [party("p1", "Acme", email="a@acme.example"), party("p2", "Acme", email="a@acme.example"),
+            party("p3", "Brightwater Optics"), party("p4", "Brightwatr Optics")]
+    result = dedupe.find_duplicates("party", rows)
+    report = dedupe.evaluate(result, duplicates=[["p3", "p4"]], distinct=[["p1", "p2"]])
+    assert report["missed"] == [("p3", "p4")] and report["wrong"] == [("propose", ("p1", "p2"))]
+    assert report["bands"]["propose"] == {"wrong": 1}
+
+
+def tuning_set():
+    import json
+    from pathlib import Path
+    return json.loads((Path(__file__).parent / "data" / "dedupe_tuning.json").read_text())
+
+
+@pytest.mark.parametrize("entity", ["party", "item"])
+def test_tuning_set_labels_name_real_records(entity):
+    data = tuning_set()
+    ids = {r["id"] for r in data[entity]}
+    labelled = [pid for kind in ("duplicates", "distinct") for pair in data["labels"][entity][kind] for pid in pair]
+    assert set(labelled) <= ids
+
+
+@pytest.mark.parametrize("entity", ["party", "item"])
+def test_tuning_set_never_proposes_a_known_non_duplicate(entity):
+    # Accuracy is measured, not asserted (step 7); proposing a known non-duplicate is a safety failure at any weights.
+    data = tuning_set()
+    result = dedupe.find_duplicates(entity, data[entity], test_tags=data["test_tags"])
+    report = dedupe.evaluate(result, data["labels"][entity]["duplicates"], data["labels"][entity]["distinct"])
+    assert [w for w in report["wrong"] if w[0] == "propose"] == []
