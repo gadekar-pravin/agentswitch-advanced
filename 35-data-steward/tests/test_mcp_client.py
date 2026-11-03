@@ -112,3 +112,119 @@ def test_rejected_login_is_a_plain_error_and_not_retried(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="HTTP 401"):
         mcp_client.Session("suryodaya")
     assert len(calls) == 1 and calls[0]["retries"] == 0
+
+
+def test_list_all_without_total_reports_rows_left_behind(monkeypatch):
+    # A bare-list reply carries no total: hitting the ceiling must not read as a whole table.
+    c, _ = client(monkeypatch, [ok({"structuredContent": [{"id": 1}, {"id": 2}]}),
+                                ok({"structuredContent": [{"id": 3}, {"id": 4}]})])
+    rows = c.list_all("Party", page=2, max_rows=3)
+    assert len(rows) == 3 and rows.truncated is True and rows.total is None
+
+
+def test_list_all_without_total_ending_short_is_complete(monkeypatch):
+    c, _ = client(monkeypatch, [ok({"structuredContent": [{"id": 1}, {"id": 2}]}), ok({"structuredContent": [{"id": 3}]})])
+    rows = c.list_all("Party", page=2)
+    assert len(rows) == 3 and rows.truncated is False and rows.total == 3
+
+
+def test_list_all_keeps_a_total_a_later_page_omits(monkeypatch):
+    c, _ = client(monkeypatch, [ok({"structuredContent": {"data": [{"id": 1}, {"id": 2}], "total": 9}}),
+                                ok({"structuredContent": {"data": [{"id": 3}, {"id": 4}]}})])
+    rows = c.list_all("Party", page=2, max_rows=4)
+    assert rows.total == 9 and rows.truncated is True
+
+
+def test_list_all_refuses_a_reply_without_rows(monkeypatch):
+    # call() falls back to {"text": ...} for a non-JSON reply; that must not read as an empty table.
+    c, _ = client(monkeypatch, [ok({"content": [{"type": "text", "text": "rate limited, try later"}]})])
+    with pytest.raises(McpError):
+        c.list_all("Party")
+
+
+def test_sse_event_with_several_data_lines_is_joined():
+    raw = b'event: message\ndata: {"jsonrpc": "2.0",\ndata:  "id": 1, "result": {}}\n\n'
+    assert mcp_client._decode(raw, "text/event-stream")["id"] == 1
+
+
+class FakeResponse:
+    status = 200
+    headers = {"Content-Type": "application/json"}
+
+    def __init__(self, body):
+        self.body = body
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def gateway_error(url):
+    return mcp_client.urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+
+
+@pytest.mark.parametrize("read_only, attempts", [(True, mcp_client.CONNECT_RETRIES + 1), (False, 1)])
+def test_gateway_error_is_retried_only_for_reads(monkeypatch, read_only, attempts):
+    seen = []
+
+    def urlopen(req, timeout):
+        seen.append(req)
+        raise gateway_error(req.full_url)
+
+    monkeypatch.setattr(mcp_client.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(mcp_client.time, "sleep", lambda s: None)
+    status, _ = mcp_client._http("https://instance.example/api/mcp", {"x": 1}, read_only=read_only)
+    assert status == 503 and len(seen) == attempts
+
+
+def test_real_session_logs_in_once_when_token_expires(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
+    (tmp_path / "seat35-keystone.token").write_text("stale")
+    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("team35b@theschoolofai.in", "pw"))
+    logins = []
+
+    def _http(url, body=None, token=None, **kwargs):
+        logins.append(url)
+        return 200, {"token": "fresh"}
+
+    monkeypatch.setattr(mcp_client, "_http", _http)
+    session = mcp_client.Session("keystone")
+    tokens = []
+
+    def call():
+        tokens.append(session.token)
+        if session.token == "stale":
+            raise AuthExpired("x")
+        return "ok"
+
+    assert session.with_reauth(call) == "ok"
+    assert tokens == ["stale", "fresh"] and len(logins) == 1
+    assert (tmp_path / "seat35-keystone.token").read_text() == "fresh"
+
+
+def test_reauth_skips_login_when_another_call_already_refreshed(monkeypatch, tmp_path):
+    # Two calls fail on the same stale token; the second must reuse the first one's login, not spend another try.
+    monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
+    (tmp_path / "seat35-keystone.token").write_text("stale")
+    session = mcp_client.Session("keystone")
+    logins = []
+
+    def login():
+        logins.append(1)
+        session.token = "fresh"
+
+    monkeypatch.setattr(session, "login", login)
+
+    def call_that_failed_before_the_refresh():
+        if not logins:
+            login()  # the other call's login lands while this one is still in flight
+            raise AuthExpired("x")
+        return "ok"
+
+    assert session.with_reauth(call_that_failed_before_the_refresh) == "ok"
+    assert len(logins) == 1

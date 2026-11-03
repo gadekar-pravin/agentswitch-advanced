@@ -52,7 +52,10 @@ def load_dotenv(path: Path = ROOT / ".env") -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip().strip('"').strip("'")
+        key, value = key.strip(), value.strip()
+        # Only one matching pair wraps a value: passwords have symbols, and a quote at either end may be one of them.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
         if key.startswith("AGENTSWITCH_"):
             continue
         if value:

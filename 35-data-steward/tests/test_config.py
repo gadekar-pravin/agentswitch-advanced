@@ -54,3 +54,12 @@ def test_platform_rejects_unknown_instance(monkeypatch):
     monkeypatch.setenv("AGENTSWITCH_INSTANCE", "nowhere")
     with pytest.raises(RuntimeError, match="nowhere"):
         config.platform()
+
+
+def test_dotenv_removes_one_matching_quote_pair_only(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("SEAT35_PASSWORD_KEYSTONE=\"ab'c#d=e'\"\nSEAT35_PASSWORD_SURYODAYA='x\"\n")
+    config.load_dotenv(env_file)
+    assert config.os.environ["SEAT35_PASSWORD_KEYSTONE"] == "ab'c#d=e'"
+    # Unmatched quotes are part of the password, not wrapping.
+    assert config.os.environ["SEAT35_PASSWORD_SURYODAYA"] == "'x\""

@@ -11,7 +11,7 @@ import json
 from collections import Counter
 
 from . import config
-from .mcp_client import McpClient, McpError, Session
+from .mcp_client import McpClient, Session
 
 
 def probe(instance: str) -> dict[str, dict]:
@@ -29,8 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     for instance in args.instance or sorted(config.INSTANCES):
         try:
             tools = probe(instance)
-        except (McpError, RuntimeError) as e:
-            print(f"{instance}: FAILED {e}")
+        except Exception as e:  # one system failing (network, bad reply) must not stop the probe of the other
+            print(f"{instance}: FAILED {type(e).__name__}: {e}")
             failed += 1
             continue
         modules = Counter(name.split(".", 1)[0] for name in tools)

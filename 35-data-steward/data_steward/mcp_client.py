@@ -55,7 +55,14 @@ def _decode(raw: bytes, content_type: str):
     """JSON body, or the last `data:` event of an SSE body: the MCP endpoint may answer either way, since we
     accept both as the streamable-HTTP transport requires."""
     if content_type.startswith("text/event-stream"):
-        events = [line[5:].strip() for line in raw.decode().splitlines() if line.startswith("data:")]
+        # One event's data may span several `data:` lines; a blank line ends the event.
+        events, lines = [], []
+        for line in [*raw.decode().splitlines(), ""]:
+            if line.startswith("data:"):
+                lines.append(line[5:].removeprefix(" "))
+            elif not line and lines:
+                events.append("\n".join(lines))
+                lines = []
         return json.loads(events[-1]) if events else None
     return json.loads(raw or b"null")
 
@@ -144,10 +151,11 @@ class Session:
         return payload
 
     def with_reauth(self, fn):
+        # Taken before the call: a token refreshed by another call while this one was in flight is not stale.
+        stale = self.token
         try:
             return fn()
         except AuthExpired:
-            stale = self.token
             with self._lock:
                 # Concurrent calls share one session: whoever gets here first logs in again, the rest reuse it.
                 if self.token == stale:
@@ -227,11 +235,21 @@ class McpClient:
         rows, offset, total = RowPage(), 0, None
         while True:
             res = self.call(f"{entity}.list", {"limit": page, "offset": offset, **filters})
-            batch = res.get("data", []) if isinstance(res, dict) else res
-            total = res.get("total") if isinstance(res, dict) else total
+            if isinstance(res, dict) and not isinstance(res.get("data"), list):
+                # call() turns a non-JSON reply into {"text": ...}; reading that as an empty table would hide rows.
+                raise McpError("bad_reply", f"{entity}.list returned no rows list", res)
+            batch = res["data"] if isinstance(res, dict) else res
+            if isinstance(res, dict) and res.get("total") is not None:
+                total = res["total"]
             rows.extend(batch[:max(0, max_rows - len(rows))])
             offset += len(batch)
-            if len(rows) >= max_rows or not batch or len(batch) < page or (total is not None and offset >= total):
+            exhausted = not batch or len(batch) < page or (total is not None and offset >= total)
+            if exhausted and offset <= len(rows):
                 rows.total = total if total is not None else len(rows)
                 rows.truncated = rows.total > len(rows)
+                return rows
+            if len(rows) >= max_rows:
+                # Rows were left behind, or may be: without a total the table's size is unknown.
+                rows.total = total
+                rows.truncated = True
                 return rows
