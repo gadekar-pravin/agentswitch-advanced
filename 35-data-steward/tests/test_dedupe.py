@@ -247,9 +247,16 @@ def test_role_active_flag_is_read_like_other_booleans(inactive):
     assert pairs("party", rows)[("p1", "p2")]["band"] == "propose"
 
 
-def test_malformed_roles_and_names_do_not_crash():
-    rows = [party("p1", 12345, roles=[None, 7, {"active": True}]), party("p2", None, roles="customer")]
-    assert dedupe.find_duplicates("party", rows)["pairs"] == []
+@pytest.mark.parametrize("roles", [[None, 7, {"active": True}], [{"role": ["customer"], "active": True}], 7, "customer"])
+def test_malformed_roles_do_not_crash_a_scored_pair(roles):
+    # The pair shares an email, so scoring (and role parsing) actually runs.
+    rows = [party("p1", "Acme", email="a@acme.example", roles=roles), party("p2", "Acme", email="a@acme.example")]
+    assert ("p1", "p2") in pairs("party", rows)
+
+
+def test_names_that_are_not_strings_do_not_crash():
+    rows = [party("p1", 12345, email="a@acme.example"), party("p2", None, email="a@acme.example")]
+    assert ("p1", "p2") in pairs("party", rows)
 
 
 def test_party_type_comparison_ignores_case():
@@ -280,8 +287,11 @@ def test_variant_match_checks_the_other_items_sku_too():
     assert [e["reason"] for e in dedupe.find_duplicates("item", rows)["excluded"]] == ["variant of the other item"]
 
 
-def test_names_in_other_scripts_still_meet():
-    assert dedupe.norm_name("राम शर्मा") == dedupe.norm_name("शर्मा राम") != ""
+def test_names_in_other_scripts_still_meet_and_keep_their_marks():
+    assert dedupe.norm_name("राम शर्मा") == dedupe.norm_name("शर्मा राम")
+    assert dedupe.norm_name("राम") != dedupe.norm_name("रोम")
+    assert dedupe.tokens("शर्मा") == ["शर्मा"]  # one word, not letters split at the virama
+    assert dedupe.norm_name("José Núñez") == dedupe.norm_name("jose nunez")
 
 
 def test_evaluate_reports_an_excluded_known_duplicate_apart_from_misses():
@@ -289,3 +299,28 @@ def test_evaluate_reports_an_excluded_known_duplicate_apart_from_misses():
             party("p2", "Jordan Pike", email="j@pike.example", type="organization")]
     report = dedupe.evaluate(dedupe.find_duplicates("party", rows), duplicates=[["p1", "p2"]], distinct=[])
     assert report["excluded"] == [("p1", "p2")] and report["missed"] == []
+
+
+@pytest.mark.parametrize("a, b, caps", [
+    (dict(code="G-1", sku="G-1"), dict(code="G-1", sku="G-BLUE"), ["sku differs"]),  # SKU repeating its code
+    (dict(code="AAA", sku="BBB"), dict(code="BBB", sku="CCC"), ["code differs", "sku differs"]),  # a chain, not an alias
+    (dict(code="PL-1", sku="PAL-1"), dict(code="PAL-1", sku="PL-1"), []),  # swapped fields
+    (dict(code="PL-1", sku="PAL-1"), dict(code="PAL-1"), []),  # one record stored the SKU as its code
+])
+def test_code_and_sku_alias_rule(a, b, caps):
+    rows = [item("i1", "Widget", a.pop("code"), **a), item("i2", "Widget", b.pop("code"), **b)]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert p["caps"] == caps and p["band"] == ("propose" if not caps else "review")
+
+
+def test_padded_unit_is_the_same_unit():
+    rows = [item("i1", "Wire", "W1", uom="ea "), item("i2", "Wire", "W1", uom="EA")]
+    result = dedupe.find_duplicates("item", rows)
+    assert result["excluded"] == [] and result["pairs"][0]["band"] == "propose"
+
+
+def test_shared_limit_counts_code_and_sku_together():
+    n = dedupe.SHARED_LIMIT // 2 + 1
+    rows = ([item(f"c{i}", f"Thing {i}", "SAME-1") for i in range(n)]
+            + [item(f"s{i}", f"Other {i}", f"OWN-{i}", sku="SAME-1") for i in range(n)])
+    assert dedupe.find_duplicates("item", rows)["ignored_shared"] == {"code": 1}

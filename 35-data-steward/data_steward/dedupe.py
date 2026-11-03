@@ -58,10 +58,15 @@ def strip_tag(name: str, test_tags) -> tuple[str, bool]:
 
 
 def tokens(text: str) -> list[str]:
-    """Words of any script, accents dropped. Dropping every non-ASCII letter would turn a Devanagari name into nothing,
-    and two such names would then never meet."""
-    text = "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c))
-    return re.sub(r"[\W_]+", " ", text.casefold().replace("&", " and ")).split()
+    """Words of any script. Latin accents are dropped ("José" is "Jose"), but other scripts keep their marks: a
+    Devanagari vowel sign or virama is part of the word ("राम" and "रोम" are different names), and splitting on it
+    would cut one word into letters."""
+    out = []
+    for c in unicodedata.normalize("NFKD", str(text).casefold().replace("&", " and ")):
+        if "\u0300" <= c <= "\u036f":
+            continue
+        out.append(c if c.isalnum() or unicodedata.category(c).startswith("M") else " ")
+    return "".join(out).split()
 
 
 def norm_name(name: str, test_tags=()) -> str:
@@ -106,11 +111,14 @@ def active_roles(row) -> frozenset:
     roles = row.get("roles") or []
     if isinstance(roles, str):
         roles = [roles]
+    if not isinstance(roles, list):
+        return frozenset()
     active = set()
     for r in roles:
         if isinstance(r, str):
             active.add(r)
-        elif isinstance(r, dict) and r.get("role") and (r.get("active") is None or flag(r["active"])):
+        elif (isinstance(r, dict) and isinstance(r.get("role"), str) and r["role"]
+              and (r.get("active") is None or flag(r["active"]))):
             active.add(r["role"])
     return frozenset(active)
 
@@ -145,25 +153,26 @@ def _item_keys(row, test_tags) -> dict:
 
 
 PARTY_STRONG = ("customer_code", "email", "phone")
+# Code and SKU can hold each other's value, so they group in one namespace: one item's SKU meets the other's code.
+_BLOCK_NAMESPACE = {"sku": "code"}
 ITEM_STRONG = ("code", "sku")
 
 
 def _drop_shared(keys: dict[str, dict], strong) -> dict[str, int]:
-    """Blank out strong values held by too many records; returns how many values were dropped per key."""
+    """Blank out strong values held by too many records; returns how many values were dropped per key. Keys that
+    group together (code and SKU) are counted together, by record."""
     dropped = {}
-    for key in strong:
-        counts = Counter(k[key] for k in keys.values() if k[key])
+    for space in dict.fromkeys(_BLOCK_NAMESPACE.get(key, key) for key in strong):
+        fields = [key for key in strong if _BLOCK_NAMESPACE.get(key, key) == space]
+        counts = Counter(v for k in keys.values() for v in {k[f] for f in fields} - {""})
         shared = {v for v, n in counts.items() if n > SHARED_LIMIT}
         if shared:
-            dropped[key] = len(shared)
+            dropped[space] = len(shared)
             for k in keys.values():
-                if k[key] in shared:
-                    k[key] = ""
+                for f in fields:
+                    if k[f] in shared:
+                        k[f] = ""
     return dropped
-
-
-# Code and SKU can hold each other's value, so they group in one namespace: one item's SKU meets the other's code.
-_BLOCK_NAMESPACE = {"sku": "code"}
 
 
 def _candidates(keys: dict[str, dict], block_on) -> tuple[set[tuple[str, str]], int]:
@@ -211,15 +220,20 @@ def _score_party(a, b, ka, kb):
     return signals, conflicts, caps, PARTY_WEIGHTS
 
 
+def _alias(mine, theirs, my_other, their_other) -> bool:
+    """Their value in this field is my value in the other field, and their other field is empty or my value here: one
+    record stored the identifier in the other field. Anything more is two records with different identifiers."""
+    return theirs == my_other and (not their_other or their_other == mine)
+
+
 def _score_item(_a, _b, ka, kb):
     signals, conflicts = [], []
     codes_a, codes_b = {ka["code"], ka["sku"]} - {""}, {kb["code"], kb["sku"]} - {""}
     if codes_a & codes_b:
         signals.append("code")  # code and SKU can be aliases: one match counts once
-    for key in ITEM_STRONG:
-        # Same field, both filled, different, and neither value is one of the other item's identifiers: a real
-        # disagreement, even when the other field matches.
-        if ka[key] and kb[key] and ka[key] != kb[key] and ka[key] not in codes_b and kb[key] not in codes_a:
+    for key, other in (("code", "sku"), ("sku", "code")):
+        if ka[key] and kb[key] and ka[key] != kb[key] and not (
+                _alias(ka[key], kb[key], ka[other], kb[other]) or _alias(kb[key], ka[key], kb[other], ka[other])):
             conflicts.append(key)
     name = _name_signal(ka["name"], kb["name"])
     if name:
@@ -235,7 +249,7 @@ def _excluded_party(a, b) -> str | None:
         return "flagged as an allowed duplicate"
     if a.get("company_id") and b.get("company_id") and a["company_id"] != b["company_id"]:
         return "different companies"
-    if a.get("type") and b.get("type") and str(a["type"]).casefold() != str(b["type"]).casefold():
+    if norm_code(a.get("type")) and norm_code(b.get("type")) and norm_code(a["type"]) != norm_code(b["type"]):
         return "individual and organisation"
     return None
 
@@ -251,7 +265,8 @@ def _excluded_item(a, b) -> str | None:
     if a.get("company_id") and b.get("company_id") and a["company_id"] != b["company_id"]:
         return "different companies"
     for key, reason in (("product_type", "different kinds"), ("type", "different kinds"), ("uom", "different units")):
-        if a.get(key) and b.get(key) and str(a[key]).casefold() != str(b[key]).casefold():
+        va, vb = norm_code(a.get(key)), norm_code(b.get(key))
+        if va and vb and va != vb:
             return reason
     codes_a = {norm_code(a.get("code")), norm_code(a.get("sku"))} - {""}
     codes_b = {norm_code(b.get("code")), norm_code(b.get("sku"))} - {""}
