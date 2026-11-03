@@ -17,3 +17,13 @@ crm, inventory, accounting (read)
 
 ## Working rules
 See the top-level README. Put your agent code, tests and notes in this folder; open a pull request for every change.
+
+## Setup
+```bash
+uv sync
+cp .env.example .env                   # paste both passwords; .env is git-ignored
+uv run pytest                          # offline tests
+uv run python -m data_steward.probe    # read-only login and tool list on both systems
+```
+The probe writes the full tool list to `local/`, which is git-ignored because it is platform-derived. See
+[AGENTS.md](AGENTS.md) for what may run against the live systems.
