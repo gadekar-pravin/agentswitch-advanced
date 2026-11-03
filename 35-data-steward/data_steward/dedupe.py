@@ -9,15 +9,20 @@ from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from itertools import combinations
 
-RULES_VERSION = "1"
+# Bumped whenever a change can alter which pairs are found, their scores, bands or exclusions.
+RULES_VERSION = "2"
 
 PROPOSE, REVIEW = 0.9, 0.6
 BAND_ORDER = {"propose": 0, "review": 1}
 
-# Weights are starting values; step 7 tunes them on the tuning set and then freezes them.
-PARTY_WEIGHTS = {"customer_code": 0.7, "email": 0.6, "phone": 0.5, "name": 0.6, "near_name": 0.25, "website": 0.2,
+# Tuned on the tuning set (step 7) and frozen by commit. A near name (similarity 0.9 or more after normalizing: about
+# a letter or two apart in a name of ordinary length) weighs as much as an exact one, so a duplicate that differs only
+# by a typo reaches review. Similarity does not show the difference is a typo, though: two people a letter apart can
+# share a household email or phone. So a party pair whose names are only near is held at review unless the two share
+# a customer code, which belongs to one customer (_score_party).
+PARTY_WEIGHTS = {"customer_code": 0.7, "email": 0.6, "phone": 0.5, "name": 0.6, "near_name": 0.6, "website": 0.2,
                  "city_postal": 0.15}
-ITEM_WEIGHTS = {"code": 0.7, "name": 0.5, "near_name": 0.25, "category": 0.1, "uom": 0.05}
+ITEM_WEIGHTS = {"code": 0.7, "name": 0.5, "near_name": 0.5, "category": 0.1, "uom": 0.05}
 NEAR_NAME = 0.9
 
 # A strong value held by more records than this is a shared inbox, a switchboard or a dummy, not an identity.
@@ -215,6 +220,8 @@ def _score_party(a, b, ka, kb, oa, ob):
     name = _name_signal(ka["name"], kb["name"])
     if name:
         signals.append(name)
+    if name == "near_name" and "customer_code" not in signals:
+        caps.append("names differ slightly")  # a customer code is one customer's, not a household's
     ra, rb = active_roles(a), active_roles(b)
     if ra and rb and ra != rb:
         caps.append("roles differ")

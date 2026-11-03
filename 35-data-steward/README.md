@@ -34,7 +34,7 @@ uv run python -m data_steward.dedupe --instance keystone     # or suryodaya; rea
 ```
 Reads every party and item on one system and writes `local/dedupe-<instance>.json` (the record of truth) and
 `local/dedupe-<instance>.md` (made from it), readable by you only. Each pair has a rule score from 0 to 1 and a band:
-**propose** (0.9 or more, no conflict), **review** (0.6 to 0.9, or held back by a conflict or a role difference), or
+**propose** (0.9 or more, no conflict), **review** (0.6 to 0.9, or held back by a conflict, a role difference or names that are only near), or
 dropped and only counted. Each pair also lists its evidence, a suggested survivor with the rule that chose it, the
 fields that differ, and, for proposed pairs, how many records point at each side. Pairs that must never merge
 (different companies, an individual and an organisation, different kinds or units, variants) are listed with the

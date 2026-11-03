@@ -89,9 +89,34 @@ def test_inactive_role_does_not_count():
 
 
 def test_score_below_review_is_dropped_and_counted():
-    rows = [party("p1", "Brightwater Optics"), party("p2", "Brightwatr Optics")]
+    rows = [party("p1", "Olsen Plumbing", phone="5552013344"), party("p2", "Marlow Electric", phone="5552013344")]
     result = dedupe.find_duplicates("party", rows)
-    assert result["pairs"] == [] and result["dropped"] == 1
+    assert result["pairs"] == [] and result["dropped"] == 1  # a phone alone is below review
+
+
+def test_a_one_letter_typo_counts_as_the_name():
+    rows = [party("p1", "Brightwater Optics"), party("p2", "Brightwatr Optics")]
+    assert pairs("party", rows)[("p1", "p2")]["band"] == "review"
+    items = [item("i1", "Shrink Wrap Roll 500", "SW-500", category_id="pack"),
+             item("i2", "Shrink Wrap Rol 500", "SWR-500", category_id="pack")]
+    shrink = pairs("item", items)[("i1", "i2")]
+    assert (shrink["score"], shrink["band"], shrink["caps"]) == (0.65, "review", ["code differs"])
+
+
+@pytest.mark.parametrize("shared", [{"email": "family@whitcombe.example"}, {"phone": "5552013344"}])
+def test_near_names_with_a_shared_contact_are_held_at_review(shared):
+    # Two people a letter apart can share a household email or phone: a near name never proposes.
+    rows = [party("p1", "Dana Whitcombe", **shared), party("p2", "Dane Whitcombe", **shared)]
+    p = pairs("party", rows)[("p1", "p2")]
+    assert p["score"] >= 0.9 and p["band"] == "review" and p["caps"] == ["names differ slightly"]
+    exact = pairs("party", [party("p1", "Dana Whitcombe", **shared), party("p2", "Dana Whitcombe", **shared)])
+    assert exact[("p1", "p2")]["band"] == "propose"  # an exact name with the same contact still proposes
+
+
+def test_near_names_with_the_same_customer_code_still_propose():
+    rows = [party("p1", "Dana Whitcombe", customer_code="C-1001"), party("p2", "Dane Whitcombe", customer_code="C-1001")]
+    p = pairs("party", rows)[("p1", "p2")]
+    assert (p["band"], p["caps"]) == ("propose", [])
 
 
 @pytest.mark.parametrize("a, b, reason", [
@@ -174,7 +199,7 @@ def test_variant_of_another_item_is_excluded():
 
 def test_evaluate_counts_misses_and_wrong_proposals():
     rows = [party("p1", "Acme", email="a@acme.example"), party("p2", "Acme", email="a@acme.example"),
-            party("p3", "Brightwater Optics"), party("p4", "Brightwatr Optics")]
+            party("p3", "Olsen Plumbing", phone="5552013344"), party("p4", "Marlow Electric", phone="5552013344")]
     result = dedupe.find_duplicates("party", rows)
     report = dedupe.evaluate(result, duplicates=[["p3", "p4"]], distinct=[["p1", "p2"]])
     assert report["missed"] == [("p3", "p4")] and report["wrong"] == [("propose", ("p1", "p2"))]
