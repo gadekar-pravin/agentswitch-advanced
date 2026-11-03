@@ -203,14 +203,15 @@ def _name_signal(a: str, b: str):
     return "near_name" if SequenceMatcher(None, a, b).ratio() >= NEAR_NAME else None
 
 
-def _score_party(a, b, ka, kb):
+def _score_party(a, b, ka, kb, oa, ob):
+    """ka, kb: keys with widely shared values blanked, for evidence. oa, ob: the same keys before blanking, for
+    conflicts: a value too common to prove two records are one still shows that they disagree."""
     signals, conflicts, caps = [], [], []
     for key in ("customer_code", "email", "phone", "website", "city_postal"):
-        if ka[key] and kb[key]:
-            if ka[key] == kb[key]:
-                signals.append(key)
-            elif key in PARTY_STRONG:
-                conflicts.append(key)
+        if ka[key] and ka[key] == kb[key]:
+            signals.append(key)
+        elif key in PARTY_STRONG and oa[key] and ob[key] and oa[key] != ob[key]:
+            conflicts.append(key)
     name = _name_signal(ka["name"], kb["name"])
     if name:
         signals.append(name)
@@ -226,14 +227,15 @@ def _alias(mine, theirs, my_other, their_other) -> bool:
     return theirs == my_other and (not their_other or their_other == mine)
 
 
-def _score_item(_a, _b, ka, kb):
+def _score_item(_a, _b, ka, kb, oa, ob):
+    """As _score_party: evidence from the blanked keys, conflicts from the keys before blanking."""
     signals, conflicts = [], []
     codes_a, codes_b = {ka["code"], ka["sku"]} - {""}, {kb["code"], kb["sku"]} - {""}
     if codes_a & codes_b:
         signals.append("code")  # code and SKU can be aliases: one match counts once
     for key, other in (("code", "sku"), ("sku", "code")):
-        if ka[key] and kb[key] and ka[key] != kb[key] and not (
-                _alias(ka[key], kb[key], ka[other], kb[other]) or _alias(kb[key], ka[key], kb[other], ka[other])):
+        if oa[key] and ob[key] and oa[key] != ob[key] and not (
+                _alias(oa[key], ob[key], oa[other], ob[other]) or _alias(ob[key], oa[key], ob[other], oa[other])):
             conflicts.append(key)
     name = _name_signal(ka["name"], kb["name"])
     if name:
@@ -307,13 +309,14 @@ def find_duplicates(entity: str, rows: list[dict], test_tags=()) -> dict:
         if entity == "party" else
         (_item_keys, _score_item, _excluded_item, ITEM_STRONG, ("code", "sku")))
     keys = {rid: key_fn(row, test_tags) for rid, row in by_id.items()}
+    original = {rid: dict(k) for rid, k in keys.items()}
     ignored_shared = _drop_shared(keys, strong)
 
     candidates, skipped_blocks = _candidates(keys, block_on + ("name",))
     pairs, excluded, dropped = [], [], 0
     for ida, idb in sorted(candidates):
         a, b = by_id[ida], by_id[idb]
-        signals, conflicts, caps, weights = score_fn(a, b, keys[ida], keys[idb])
+        signals, conflicts, caps, weights = score_fn(a, b, keys[ida], keys[idb], original[ida], original[idb])
         score = round(min(1.0, sum(weights[s] for s in signals)), 2)
         if conflicts:
             caps = [f"{c} differs" for c in conflicts] + caps

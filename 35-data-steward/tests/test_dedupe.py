@@ -324,3 +324,19 @@ def test_shared_limit_counts_code_and_sku_together():
     rows = ([item(f"c{i}", f"Thing {i}", "SAME-1") for i in range(n)]
             + [item(f"s{i}", f"Other {i}", f"OWN-{i}", sku="SAME-1") for i in range(n)])
     assert dedupe.find_duplicates("item", rows)["ignored_shared"] == {"code": 1}
+
+
+def test_a_widely_shared_value_still_counts_as_a_conflict():
+    # G-RED is on too many records to prove identity, but A and B still disagree on SKU.
+    others = [item(f"o{i}", f"Other {i}", f"OTH-{i}", sku="G-RED") for i in range(dedupe.SHARED_LIMIT)]
+    rows = [item("i1", "Widget", "G-1", sku="G-RED"), item("i2", "Widget", "G-1", sku="G-BLUE"), *others]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert p["band"] == "review" and p["caps"] == ["sku differs"]
+
+
+def test_a_shared_inbox_still_counts_as_an_email_conflict():
+    inbox = [party(f"o{i}", f"Staff {i}", email="desk@shared.example") for i in range(dedupe.SHARED_LIMIT)]
+    rows = [party("p1", "Acme", email="desk@shared.example", phone="5552010001"),
+            party("p2", "Acme", email="owner@acme.example", phone="5552010001"), *inbox]
+    p = pairs("party", rows)[("p1", "p2")]
+    assert p["band"] == "review" and p["caps"] == ["email differs"]
