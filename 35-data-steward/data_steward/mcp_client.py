@@ -128,7 +128,12 @@ class Session:
             raise RuntimeError(f"{self.base} rejected the harness runner's token (401)")
         email, password = config.credentials(self.instance)
         # Ten wrong passwords in 15 minutes lock the account, so a failed login is never retried here.
-        status, payload = _http(f"{self.base}/api/auth/login", {"email": email, "password": password}, retries=0)
+        try:
+            status, payload = _http(f"{self.base}/api/auth/login", {"email": email, "password": password}, retries=0)
+        except AuthExpired:
+            # On the login endpoint a 401 means wrong credentials, not an expired token: re-logging in would only
+            # spend another of the ten tries.
+            raise RuntimeError(f"login failed on {self.instance}: HTTP 401 (check the password for {email})") from None
         if status != 200 or not payload or "token" not in payload:
             raise RuntimeError(f"login failed on {self.instance}: HTTP {status}")
         self.token = payload["token"]

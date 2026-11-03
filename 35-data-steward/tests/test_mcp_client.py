@@ -102,3 +102,13 @@ def test_sse_body_decodes_last_data_event():
     raw = b'event: message\ndata: {"jsonrpc": "2.0", "id": 1, "result": {"ok": true}}\n\n'
     assert mcp_client._decode(raw, "text/event-stream; charset=utf-8")["result"] == {"ok": True}
     assert mcp_client._decode(json.dumps({"a": 1}).encode(), "application/json") == {"a": 1}
+
+
+def test_rejected_login_is_a_plain_error_and_not_retried(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
+    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("team35b@theschoolofai.in", "wrong"))
+    _http, calls = fake_http([AuthExpired("login")])
+    monkeypatch.setattr(mcp_client, "_http", _http)
+    with pytest.raises(RuntimeError, match="HTTP 401"):
+        mcp_client.Session("suryodaya")
+    assert len(calls) == 1 and calls[0]["retries"] == 0
