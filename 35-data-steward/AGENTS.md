@@ -29,8 +29,8 @@ working for before anything else that calls them. The exception is `python -m da
 - Approval requests, todos and bug reports are themselves records on a shared system: ask before creating any.
 - Never delete or overwrite data this seat did not create.
 - Ten wrong passwords in 15 minutes lock the login, so a failed login is never retried automatically.
-- Each login has a daily token budget, and harness submissions are limited to one run per seat every 3 days.
-  Never submit a run without being asked.
+- Usage is monitored and heavy use can be limited without notice, so keep live reads few and small. Harness
+  submissions are limited to one run per seat every 3 days. Never submit a run without being asked.
 
 ## The repository is public
 
@@ -53,8 +53,12 @@ the record of the seat's work, so make one per logical change.
 | `data_steward/config.py` | instance URLs, `.env` loading, credentials, harness-runner detection |
 | `data_steward/mcp_client.py` | `Session` (login, token cache, re-login), `McpClient` (JSON-RPC calls, `list_all`) |
 | `data_steward/probe.py` | read-only login and tool list per system |
-| `tests/` | offline tests; every network call is faked |
-| `local/` | git-ignored platform-derived output |
+| `data_steward/dedupe.py` | the duplicate matcher: normalize, group, score, band, exclusions. Pure functions, no network |
+| `data_steward/proposals.py` | merge proposals: suggested survivor, field differences, reference counts (read-only calls) |
+| `data_steward/report.py` | the scan and the JSON and Markdown report behind `python -m data_steward.dedupe` |
+| `docs/first-task-plan.md` | the first-task plan: decisions, signals, exclusions, build steps |
+| `tests/` | offline tests; every network call is faked. `tests/data/dedupe_tuning.json` is the made-up tuning set |
+| `local/` | git-ignored platform-derived output: tool lists, reads, reports, test tags, labels |
 
 ## Commands
 
@@ -65,7 +69,19 @@ uv run pytest                          # offline tests
 uv run ruff check .
 uv run python -m data_steward.probe    # read-only: what tools this seat sees on each system
 uv run python -m data_steward.probe --instance keystone
+uv run python -m data_steward.dedupe --instance keystone   # read-only scan; ask first (see "Live systems")
 ```
+
+## The duplicate report
+
+- `python -m data_steward.dedupe` reads every party and item on one system (the harness runner's, else the one
+  given, else Keystone) and writes `local/dedupe-<instance>.json` and `.md`, owner-only. It always writes to
+  `local/`: the report holds real party data. Standard output is counts only, safe for a pull request description.
+- It reads `local/test-tags.txt` (one confirmed test-run tag per line, the tag first, then where it came from) and
+  `local/dedupe-labels.json` (`{"<pair id>": "accepted" | "rejected"}`). It never writes either. Add a tag only when
+  a read has confirmed it; never hard-code one in the repository.
+- Scores are rule scores, not probabilities. Changing anything that can affect which pairs are found, their scores,
+  bands or exclusions after step 7's freeze voids the held-back check (see the plan).
 
 ## Environment and logins
 
@@ -86,8 +102,9 @@ resulting data confirms it, never because of the agent's wording.
 
 ## Reporting problems
 
-Report a platform problem in the seat group with four facts: the system, the login name, the exact request, and the
-reply. Never include a password or token.
+Use the format in [../BUG_REPORT_FORMAT.md](../BUG_REPORT_FORMAT.md), one report per finding, sent to the course team
+as text. Never include a password, token or customer data. Reports that hold platform data stay out of the
+repository.
 
 ## Platform quirks
 
@@ -97,6 +114,8 @@ reply. Never include a password or token.
 - The MCP endpoint may answer as JSON or as server-sent events; `_decode` handles both.
 - `.list` tools page with `limit` and `offset` (the cap is in `local/`). `McpClient.list_all` marks a result `truncated` whenever
   rows may have been left behind, and raises on a reply without a rows list rather than returning an empty table.
+- Reference counts do not use `list_all` or the reported total: they page every filtered row until an empty page,
+  because a server may cap a page below the requested limit, and check that every row carries the filter value.
 
 ## Code style
 

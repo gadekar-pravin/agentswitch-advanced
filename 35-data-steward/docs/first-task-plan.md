@@ -1,6 +1,7 @@
 # First task plan: duplicate-party and duplicate-item report
 
-Due 15 Nov 2026. Written 3 Nov, revised after review the same day, amended after the Keystone read (step 3).
+Due 15 Nov 2026. Written 3 Nov, revised after review the same day, amended after the Keystone read (step 3), and
+brought up to date after steps 5 and 6 and the Suryodaya read the same day.
 
 ## What we deliver
 
@@ -9,7 +10,7 @@ truth) and a Markdown page made from it, both under `local/`, which is git-ignor
 party data. Each proposal pairs two records, gives a confidence with the evidence behind it, suggests which record
 survives, and lists what differs. Nothing on the platform changes and no record is created.
 
-Keystone only until the Suryodaya login works. The report says which system it covers.
+It runs on either system, one per run; both have been read. The report says which system it covers.
 
 **Handed over on 15 Nov:** the merged pull request (code, tests, this plan), a summary with counts only in the pull
 request description (rows read, proposals per band, exclusions per reason, no record data), and the full report
@@ -20,10 +21,14 @@ sent to the seat lead directly, not through the repository.
 - Both tables are small, far under the 5000-row limit, and were read whole.
 - Addresses and roles come back inside each party row, so they can be used without fetching records one by one.
   Item variants are always empty there.
-- Every reference filter narrows both the rows and the reported total, so a reference count is one small read.
+- Every reference filter narrows both the rows and the reported total, so a reference count is a small read.
 - There are almost no natural duplicates. The duplicates that exist are another team's test records, created again
   on each of their test runs, with nothing in common but a name and, mostly, a role. A shared bracketed test tag at the start
   of their names also makes different test records look alike.
+
+The Suryodaya read (3 Nov) showed the same: both tables small and read whole, every reference filter narrowing rows
+and total, no shared email, phone or code, and nothing proposed. A few same-name parties with different emails sit
+in review. Its items do carry SKUs and variants, which Keystone's do not.
 
 So live data cannot tune or check the matcher. Made-up data does that instead: a tuning set and a separately written held-back set (steps 4, 4b and 7).
 
@@ -76,10 +81,11 @@ evidence; that alone is not a role difference.
 
 For proposed pairs only, count the records that point at each side: orders, payments, ledger entries, leads,
 deals and relationships for parties (every link to the party, from either side), and stock movements for items. A
-count that could not be read is **unknown**, never zero. On Keystone each count is the filtered total. On another
-system, check the filters first: if a filter narrows the rows but not the reported total, the rows are counted; if
-it does not narrow the rows, reference counts are left out and the survivor rule starts at age. Either way, matching
-goes ahead. This is the first thing cut if hours run short.
+count that could not be read is **unknown**, never zero. Each count is the number of filtered rows, read page by
+page until an empty page; the reported total is not used, since a system may report the whole table's total or cap a
+page below the limit asked for. A row that does not carry the filter value means the filter was ignored, and the
+count is unknown, as it is for a row seen twice, more than 5000 rows, an error or a dropped connection. An unknown
+count makes the survivor rule skip the reference step and say so. Either way, matching goes ahead.
 
 ## Build order (about 25 hours)
 
@@ -90,19 +96,18 @@ goes ahead. This is the first thing cut if hours run short.
 | 3 | Keystone read: counts, both tables into `local/`, filter checks, child rows, what duplicates look like | 2 | done |
 | 4 | `data_steward/dedupe.py`: normalize, group, score, exclusions, with tests on hand-made pairs. A made-up tuning set of parties and items with known duplicates and known non-duplicates. It covers typos, case and spacing, legal endings, phone formats, the same email under two names, records sharing a name prefix that are different, ordinary names that start with a bracketed prefix, different records sharing a city and postcode, items with near names and different codes, role differences, and repeated test records. Run from grouping to report, so a duplicate the grouping never finds shows up as a miss. Every value is invented, test tags included (tests pass their own tag list); nothing is copied from a live record. | 8 | none |
 | 4b | The other person on the seat writes the held-back set the same way, with no entity shared with the tuning set, commits it, and does not tune. The person tuning does not open it until step 7. | (in 4) | none |
-| 5 | Proposals: survivor suggestion, field differences, reference counts | 4 | step 4 |
-| 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | step 4 |
+| 5 | Proposals: survivor suggestion, field differences, reference counts | 4 | done |
+| 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | done; run on both systems 3 Nov |
 | 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | steps 4b and 6 |
 | 8 | README and AGENTS.md updates, pull request, review | 2 | step 7 |
 | | Buffer | 1.5 | |
 
-**Not for 15 Nov:** a model in the loop, Suryodaya (until the login works), platform records, merges, missing-field
+**Not for 15 Nov:** a model in the loop, platform records, merges, missing-field
 and orphan checks, and the 12-task suite (30 Nov).
 
 ## Checks that could change this plan
 
-- **The Suryodaya read, once its login works.** The same checks as step 3. If a party or item table has more than
-  5000 rows, full-table matching needs a new approach. A filter that does not work only affects reference counts, as
-  described under Reference counts.
+- **The Suryodaya read.** Done 3 Nov: both tables far under 5000 rows and every reference filter works, so nothing
+  in this plan changes.
 - **The Eval Harness seat's answer.** If their check needs a platform record per proposal, add an opt-in publish
   step that needs the person's OK each run. If their copies hold seeded duplicates, use those as a further check.
