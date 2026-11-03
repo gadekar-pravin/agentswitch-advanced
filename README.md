@@ -14,13 +14,16 @@ Only your own work: agent code, tests, notes. **No AgentSwitch source code is in
 3. Never commit passwords, tokens, API keys or `.env` files. If you do by mistake, tell the course team at once so the credential can be replaced.
 4. Your agent proposes and drafts; a person approves anything that changes a record or reaches a customer.
 5. Do not delete or overwrite data you did not create. Report problems in the bug-report format.
-6. Each login has a daily token budget. Keep your agent efficient.
+6. Keep your agent efficient. Usage is monitored and heavy use can be limited without notice.
 
 ## Milestones
 - 15 Nov 2026: first task delivered
 - 30 Nov 2026: version 1, with a 12-task test suite
 - 20 Dec 2026: integration run of all eight seats
 - 31 Dec 2026: final
+
+## Bug reports
+Any problem you find in the platform or in another seat's agent goes in the format in `BUG_REPORT_FORMAT.md`.
 
 ## Folders
 One folder per seat, named `<seat number>-<name>`. Each has a README with the scope, first task and access.
