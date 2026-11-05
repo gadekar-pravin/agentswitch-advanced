@@ -85,8 +85,9 @@ uv run python -m data_steward.dedupe --instance keystone   # read-only scan; ask
 
 ## Environment and logins
 
-- Login `team35b@theschoolofai.in` (a username; no mail is sent). Each system has its own password
-  (`SEAT35_PASSWORD_SURYODAYA`, `SEAT35_PASSWORD_KEYSTONE` in `.env`) and its own token, cached in
+- The login is `SEAT35_EMAIL` in `.env`: a username from the course team (no mail is sent), kept out of the
+  repository. Each system has its own password (`SEAT35_PASSWORD_SURYODAYA`, `SEAT35_PASSWORD_KEYSTONE` in `.env`)
+  and its own token, cached in
   `.tokens/seat35-<instance>.token`. A token lasts 7 days; on a 401 the client logs in once and retries.
 - `OPENAI_*` in `.env` are only for local runs once a model is in the loop; nothing reads them yet.
 - Python 3.11 locally; runtime code (`data_steward/`) must also run on 3.10 because the harness runner does not say

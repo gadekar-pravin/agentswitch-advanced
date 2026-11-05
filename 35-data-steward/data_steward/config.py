@@ -9,9 +9,6 @@ INSTANCES = {
     "keystone": "https://class.agentswitch.theschoolofai.in",
 }
 
-# The login looks like an address but no mail is sent to it; it is only a username.
-DEFAULT_EMAIL = "team35b@theschoolofai.in"
-
 # Platform-derived output (tool lists, schemas, probe dumps) stays here and is git-ignored: the repository is public.
 LOCAL_DIR = ROOT / "local"
 
@@ -68,7 +65,9 @@ def env(name: str, default: str | None = None) -> str | None:
 
 
 def credentials(instance: str) -> tuple[str, str]:
-    email = env("SEAT35_EMAIL") or DEFAULT_EMAIL
+    email = env("SEAT35_EMAIL")
+    if not email:
+        raise RuntimeError("Set SEAT35_EMAIL in .env")
     password = env(f"SEAT35_PASSWORD_{instance.upper()}")
     if not password:
         raise RuntimeError(f"Set SEAT35_PASSWORD_{instance.upper()} in .env")

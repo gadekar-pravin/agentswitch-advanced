@@ -31,14 +31,23 @@ def test_dotenv_is_ignored_on_platform(tmp_path, monkeypatch):
 
 def test_missing_password_names_the_variable(monkeypatch):
     monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("SEAT35_EMAIL", "seat@example.test")
     with pytest.raises(RuntimeError, match="SEAT35_PASSWORD_SURYODAYA"):
         config.credentials("suryodaya")
 
 
-def test_default_login_is_seat35(monkeypatch):
+def test_login_comes_from_the_environment(monkeypatch):
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("SEAT35_EMAIL", "seat@example.test")
+    monkeypatch.setenv("SEAT35_PASSWORD_KEYSTONE", "x")
+    assert config.credentials("keystone") == ("seat@example.test", "x")
+
+
+def test_missing_login_names_the_variable(monkeypatch):
     monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setenv("SEAT35_PASSWORD_KEYSTONE", "x")
-    assert config.credentials("keystone")[0] == "team35b@theschoolofai.in"
+    with pytest.raises(RuntimeError, match="SEAT35_EMAIL"):
+        config.credentials("keystone")
 
 
 def test_half_set_platform_environment_raises(monkeypatch):

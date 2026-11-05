@@ -133,7 +133,7 @@ def test_sse_body_decodes_last_data_event():
 
 def test_rejected_login_is_a_plain_error_and_not_retried(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
-    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("team35b@theschoolofai.in", "wrong"))
+    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("seat@example.test", "wrong"))
     _http, calls = fake_http([AuthExpired("login")])
     monkeypatch.setattr(mcp_client, "_http", _http)
     with pytest.raises(RuntimeError, match="HTTP 401"):
@@ -212,7 +212,7 @@ def test_gateway_error_is_retried_only_for_reads(monkeypatch, read_only, attempt
 def test_real_session_logs_in_once_when_token_expires(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
     (tmp_path / "seat35-keystone.token").write_text("stale")
-    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("team35b@theschoolofai.in", "pw"))
+    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("seat@example.test", "pw"))
     logins = []
 
     def _http(url, body=None, token=None, **kwargs):
