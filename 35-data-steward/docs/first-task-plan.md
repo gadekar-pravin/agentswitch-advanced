@@ -53,11 +53,12 @@ by many records. A conflict between two filled strong values caps the pair at re
 - **Parties.** Strong: the same customer code, the same email, the same phone (at least 10 digits). Weaker: the same
   name after normalizing (case, spacing, punctuation, legal endings such as Pvt Ltd or Corporation), the same website,
   the same address city and postcode.
-- **Near names.** Two normalized names with a similarity of 0.9 or more (about a letter or two apart) count as much
-  as the same name, so a duplicate that differs only by a typo reaches review, once the two records meet in grouping
-  (a shared word of three letters or more, or a shared key: a typo in a one-word name with nothing else shared is
-  never compared). A party pair whose names are only near is held at review, because two people a letter apart can
-  share a household email or phone, unless the two share a customer code, which belongs to one customer.
+- **Near names.** Two normalized names with a similarity of 0.9 or more (Python's `SequenceMatcher` ratio; about a
+  letter or two apart) count as much as the same name, so a duplicate that differs only by a typo reaches review, once
+  the two records meet in grouping (a shared word of three letters or more, or a shared key: a typo in a one-word name
+  with nothing else shared is never compared). A party pair whose names are only near is held at review, because two
+  people a letter apart can share a household email or phone, unless the two share a customer code, which belongs to
+  one customer.
 - **Items.** Strong: the same SKU or code. Weaker: the same name after normalizing, the same category and unit of
   measure (not weight unit).
 - **Test tags.** Only the test-run tags found in the read, listed in `local/`, are removed from the start of a name
@@ -66,6 +67,19 @@ by many records. A conflict between two filled strong values caps the pair at re
   pair where either name carried a test tag keeps its score and band but is shown under its own heading, and is left
   out of the band totals in the pull request summary. The report says where the tag came from (on Keystone, another
   team's test runs) only as far as the read showed it.
+- **Tax numbers (not used yet).** GST number, PAN and tax id are empty on every party on both systems (3 Nov
+  reads), so none is a signal. When a read shows them filled, add: the same GST number is strong evidence of one
+  business; the same PAN with different GST numbers is one legal entity registered in two states, which systems often
+  keep as separate parties on purpose, so it is held at review; a different PAN is a conflict. A different GST number
+  alone is not a conflict. The values are never shown in a report (they are hidden like other sensitive fields).
+  HSN/SAC is a tax class shared by unrelated goods, not an item identity.
+- **Known gaps (checked 5 Nov on the saved reads).** Comparing every pair instead of only grouped ones finds no
+  extra pair on either system, so grouping loses nothing on live data today. What the rules do not catch:
+  - spelling variants further apart than a letter or two, such as Lakshmi and Laxmi (0.67 as one word, 0.86 in
+    "Lakshmi Traders" and "Laxmi Traders"), which fall below the 0.9 cut;
+  - two items sharing only a name and a unit (0.5 + 0.05 = 0.55) are dropped, whatever their codes;
+  - one Suryodaya item pair that a person should judge: names 0.89 alike (one has a brand prefix), different codes,
+    created minutes apart. It is dropped, so it is not in the report; the details are in `local/`.
 
 ## Never proposed
 

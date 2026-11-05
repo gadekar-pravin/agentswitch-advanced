@@ -20,7 +20,7 @@ REFERENCES = {
 # Bookkeeping, not content: these always differ between two records and say nothing about which one to keep.
 META = {"id", "company_id", "created_at", "created_by", "updated_at", "updated_by"}
 # Never compared or shown, even when a system does not mark them redacted: a report goes to people.
-SENSITIVE = {"tax_id", "pan", "tin", "bank_details", "vendor_bank_account_number"}
+SENSITIVE = {"tax_id", "pan", "tin", "gst_no", "gstin", "bank_details", "vendor_bank_account_number"}
 
 
 def _count_rows(client, tool: str, field: str, rid: str) -> int | None:

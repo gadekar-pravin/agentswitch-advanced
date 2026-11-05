@@ -114,6 +114,12 @@ def test_redacted_and_sensitive_fields_are_never_shown():
     assert proposals.field_differences(a, b) == []
 
 
+def test_gst_number_is_never_shown_even_unredacted():
+    a = party("p1", "Halden Roe", gst_no="27AAAPL1234C1Z5", gstin="27AAAPL1234C1Z5")
+    b = party("p2", "Halden Roe", gst_no="29BBBPL9876D1Z2", gstin="29BBBPL9876D1Z2")
+    assert proposals.field_differences(a, b) == []
+
+
 def test_survivor_rule_order():
     old = party("p2", "Kestrel", created_at="2025-01-01", email="k@kestrel.example")
     new = party("p1", "Kestrel", created_at="2026-01-01", email="k@kestrel.example", phone="5552013344")
