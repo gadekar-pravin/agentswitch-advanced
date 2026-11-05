@@ -1,0 +1,4 @@
+# never commit raw run output (may hold unredacted tenant data) or caches
+**/results.json
+__pycache__/
+*.pyc

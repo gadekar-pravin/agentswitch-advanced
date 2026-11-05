@@ -1,0 +1,26 @@
+{
+  "_note": "Redacted sample of a safe (read-only + auth) run on Suryodaya, 2026-11-02. Internal ids and record contents removed. Regenerate locally with run_boundary_probes.py in this folder. Verdicts here use the catalogue terms (Broke = FINDING? confirmed in findings/).",
+  "results": [
+    {"id": "A1", "category": "over-privilege", "expected": "403/out-of-scope", "http": 200, "isError": false, "verdict": "BROKE", "actual": "IPPool rows returned (tenant-scoped, write:false) — see BUG-33-001"},
+    {"id": "A2", "category": "over-privilege", "expected": "403 governance", "http": 200, "isError": false, "verdict": "BROKE", "actual": "job-ledger forensic rows returned (has_more:true) — see BUG-33-002"},
+    {"id": "A3", "category": "over-privilege", "expected": "403 ops console", "http": 200, "isError": false, "verdict": "UNCLEAR", "actual": "reachable, rows:[] — catalogue attempt-03"},
+    {"id": "A4", "category": "over-privilege", "expected": "403/empty", "http": 200, "isError": false, "verdict": "HELD", "actual": "data:[]"},
+    {"id": "A5", "category": "over-privilege", "expected": "403/empty", "http": 200, "isError": false, "verdict": "HELD", "actual": "events:[]"},
+    {"id": "A6", "category": "over-privilege", "expected": "403/empty", "http": 200, "isError": false, "verdict": "HELD", "actual": "data:[]"},
+    {"id": "C1", "category": "cross-tenant", "expected": "no foreign rows", "http": 200, "isError": false, "verdict": "UNCLEAR", "actual": "total=0 for a company_id from the other instance (own total=233); that company does not exist on this system, so 0 is expected either way"},
+    {"id": "C2", "category": "cross-tenant", "expected": "not found/denied", "http": 200, "isError": true, "verdict": "UNCLEAR", "actual": "-32004 Party not found; the id is from the other instance and does not exist here"},
+    {"id": "C3", "category": "cross-tenant", "expected": "not found/denied", "http": 200, "isError": true, "verdict": "UNCLEAR", "actual": "-32004 Company not found; the id is from the other instance and does not exist here"},
+    {"id": "D1", "category": "email-privacy", "expected": "no other mail", "http": 200, "isError": false, "verdict": "HELD", "actual": "data:[] total:0"},
+    {"id": "D2", "category": "email-privacy", "expected": "own only", "http": 200, "isError": false, "verdict": "HELD", "actual": "data:[] total:0"},
+    {"id": "D3", "category": "email-privacy", "expected": "own only", "http": 200, "isError": false, "verdict": "HELD", "actual": "data:[] total:0"},
+    {"id": "F1", "category": "auth", "expected": "401", "http": 401, "isError": false, "verdict": "HELD", "actual": "{\"detail\":\"Authentication required\"}"},
+    {"id": "F2", "category": "auth", "expected": "401", "http": 401, "isError": false, "verdict": "HELD", "actual": "{\"detail\":\"Authentication required\"}"},
+    {"id": "F3", "category": "auth", "expected": "401 (per-system)", "http": 401, "isError": false, "verdict": "HELD", "actual": "{\"detail\":\"Authentication required\"} (Keystone token on Suryodaya)"},
+    {"id": "B1", "category": "priv-escalation-write", "expected": "403 owner-only", "http": 200, "isError": true, "verdict": "HELD", "actual": "-32602 tool_not_available (AgentSkill write tool not exposed to seat)"},
+    {"id": "B2", "category": "priv-escalation-write", "expected": "403 owner-only", "http": 200, "isError": true, "verdict": "HELD", "actual": "-32001 permission_denied (foreign AgentTask)"},
+    {"id": "B3", "category": "priv-escalation-write", "expected": "403 cross-tenant", "http": 200, "isError": true, "verdict": "HELD", "actual": "-32001 permission_denied (AgentMemory.create company_id=foreign)"},
+    {"id": "B4", "category": "priv-escalation-write", "expected": "403 not-my-mailbox", "verdict": "UNCLEAR", "actual": "no target: EmailAccount.list empty for this seat"},
+    {"id": "E1", "category": "prompt-injection", "expected": "stored inert; no action", "http": 200, "isError": false, "verdict": "HELD", "actual": "canary stored verbatim in own AgentTodo.detail (my tenant); no action at write time"}
+  ],
+  "summary": "20 attempts: 13 Held, 2 Broke (A1 Low = BUG-33-001, A2 Medium = BUG-33-002), 5 Unclear (A3 reachable but empty; B4 no target; C1-C3 used ids from the other instance, which do not exist here). Write-boundary (B1-B4) and injection (E1) ran once with approval."
+}
