@@ -867,6 +867,103 @@
    "product_type": "goods",
    "variants": [],
    "category_id": "cat-pack"
+  },
+  {
+   "id": "i19",
+   "name": "Copper Pipe 15mm",
+   "code": "CP-15",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-pipe"
+  },
+  {
+   "id": "i20",
+   "name": "Copper Pipe 15 mm",
+   "code": "CPP-015",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-pipe"
+  },
+  {
+   "id": "i21",
+   "name": "Copper Pipe 22mm",
+   "code": "CP-22",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-pipe"
+  },
+  {
+   "id": "i22",
+   "name": "Torvane Cable Tie Black",
+   "code": "TV-CTB",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-elec"
+  },
+  {
+   "id": "i23",
+   "name": "Cable Tie Black",
+   "code": "CT-BLK",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-elec"
+  },
+  {
+   "id": "i24",
+   "name": "Cable Tie Black Heavy",
+   "code": "CT-BLK-H",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-elec"
+  },
+  {
+   "id": "i25",
+   "name": "Cable Tie Black 300",
+   "code": "CT-BLK-300",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": [],
+   "category_id": "cat-elec"
+  },
+  {
+   "id": "i26",
+   "name": "Pallet Wrapping Service",
+   "code": "PWS-1",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": []
+  },
+  {
+   "id": "i27",
+   "name": "Pallet Wrapping Service",
+   "code": "SV-PALW",
+   "company_id": "co-1",
+   "uom": "ea",
+   "type": "product",
+   "product_type": "goods",
+   "variants": []
   }
  ],
  "labels": {
@@ -993,6 +1090,18 @@
     [
      "i17",
      "i18"
+    ],
+    [
+     "i19",
+     "i20"
+    ],
+    [
+     "i26",
+     "i27"
+    ],
+    [
+     "i22",
+     "i23"
     ]
    ],
    "distinct": [
@@ -1015,6 +1124,30 @@
     [
      "i15",
      "i16"
+    ],
+    [
+     "i19",
+     "i21"
+    ],
+    [
+     "i20",
+     "i21"
+    ],
+    [
+     "i23",
+     "i24"
+    ],
+    [
+     "i23",
+     "i25"
+    ],
+    [
+     "i24",
+     "i25"
+    ],
+    [
+     "i22",
+     "i24"
     ]
    ]
   }

@@ -54,13 +54,23 @@ by many records. A conflict between two filled strong values caps the pair at re
   name after normalizing (case, spacing, punctuation, legal endings such as Pvt Ltd or Corporation), the same website,
   the same address city and postcode.
 - **Near names.** Two normalized names with a similarity of 0.9 or more (Python's `SequenceMatcher` ratio; about a
-  letter or two apart) count as much as the same name, so a duplicate that differs only by a typo reaches review, once
+  letter or two apart) count as much as the same name for parties (for items, a little less: see Items), so a
+  duplicate that differs only by a typo reaches review, once
   the two records meet in grouping (a shared word of three letters or more, or a shared key: a typo in a one-word name
   with nothing else shared is never compared). A party pair whose names are only near is held at review, because two
   people a letter apart can share a household email or phone, unless the two share a customer code, which belongs to
   one customer.
 - **Items.** Strong: the same SKU or code. Weaker: the same name after normalizing, the same category and unit of
-  measure (not weight unit).
+  measure (not weight unit). Since rules version 3 (6 Nov, after the first held-back run): item names are split
+  wherever a digit meets a letter, so a size or model is the same however it is spaced ("25mm" and "25 mm", "MX200"
+  and "MX 200"); the same item name alone reaches review, even with
+  different codes, because a re-entered item usually gets a new code; a near item name reaches review with a
+  shared unit, because about half the live items have no category; and one name that is the other with words
+  added, such as a brand in front, counts as a near name when the shorter has three different words or more and no
+  added word holds a digit. The digit check applies only to that last rule: names a letter apart are still near by
+  similarity, so size variants ("M6" and "M8") and a long name with a short number added go to review, where a person
+  rejects them. Because words are sorted, a split can also make different sizes look the same ("2.5mm" and "5.2mm",
+  "AB12" and "12AB"); those reach review too. No item reaches propose without a shared code.
 - **Test tags.** Only the test-run tags found in the read, listed in `local/`, are removed from the start of a name
   before names are compared, so a shared tag adds nothing to the score. Any other bracketed prefix is part of the
   name and is kept. Tags never exclude a pair or keep it out of grouping, and the report keeps the original names. A
@@ -73,13 +83,18 @@ by many records. A conflict between two filled strong values caps the pair at re
   keep as separate parties on purpose, so it is held at review; a different PAN is a conflict. A different GST number
   alone is not a conflict. The values are never shown in a report (they are hidden like other sensitive fields).
   HSN/SAC is a tax class shared by unrelated goods, not an item identity.
-- **Known gaps (checked 5 Nov on the saved reads).** Comparing every pair instead of only grouped ones finds no
-  extra pair on either system, so grouping loses nothing on live data today. What the rules do not catch:
+- **Known gaps (checked on the saved reads, 5 Nov at rules version 2 and 6 Nov at version 3).** Comparing every
+  pair instead of only grouped ones finds no extra pair on either system, so grouping loses nothing on live data
+  today. What the rules do not catch:
   - spelling variants further apart than a letter or two, such as Lakshmi and Laxmi (0.67 as one word, 0.86 in
     "Lakshmi Traders" and "Laxmi Traders"), which fall below the 0.9 cut;
-  - two items sharing only a name and a unit (0.5 + 0.05 = 0.55) are dropped, whatever their codes;
-  - one Suryodaya item pair that a person should judge: names 0.89 alike (one has a brand prefix), different codes,
-    created minutes apart. It is dropped, so it is not in the report; the details are in `local/`.
+  - item abbreviations ("SS" for stainless steel) and initials in party names ("R. K." for two first names);
+  - a brand-prefixed item name whose shorter form has fewer than three words, or whose added words hold a number
+    and are long enough to keep the names under 0.9 alike;
+  - a party name with a bracketed prefix that is not a confirmed test tag, such as "[OLD]", kept by design.
+  Rules version 3 brings to review one Suryodaya item pair that a person should judge (names 0.89 alike, one with a
+  brand prefix, different codes, created minutes apart) and three other near-name pairs there, all for a person to
+  check; it adds nothing on Keystone (saved 3 Nov reads, 6 Nov). The details are in `local/`.
 
 ## Never proposed
 
@@ -117,7 +132,7 @@ count makes the survivor rule skip the reference step and say so. Either way, ma
 | 4b | The other person on the seat writes the held-back set (see "Held-back set" below) the same way, with no entity shared with the tuning set, commits it, and does not tune. The person tuning does not open it until step 7. | (in 4) | none |
 | 5 | Proposals: survivor suggestion, field differences, reference counts | 4 | done |
 | 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | done; run on both systems 3 Nov |
-| 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | tuned and frozen at rules version 2 (3 Nov); the held-back run waits on 4b |
+| 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | rules version 2 frozen 3 Nov and checked once 6 Nov (see "First held-back run"); rules version 3 tuned 6 Nov, waits on a new held-back set |
 | 8 | README and AGENTS.md updates, pull request, review | 2 | step 7 |
 | | Buffer | 1.5 | |
 
@@ -127,7 +142,9 @@ and orphan checks, and the 12-task suite (30 Nov).
 ## Held-back set (step 4b)
 
 The one honest check of the matcher: data the tuner never saw, run once against the frozen rules. The matcher is
-frozen at commit `ef06658` (rules version 2).
+frozen at the commit that sets rules version 3. The first set checked rules version 2 and has been seen by the
+person tuning, so it cannot check version 3: a new set is needed, with no entity shared with the tuning set or
+with the first set.
 
 **Who:** the other person on the seat (Dheeraj), not the person tuning (Pravin).
 
@@ -163,6 +180,23 @@ table. The result is recorded with the commit: how many pairs each band held and
 proposals, known misses, and exclusions. These are figures from made-up data and do not predict how often a live
 proposal is right. Any later change that can affect pairs, scores, bands or exclusions voids the check and needs a
 new held-back set.
+
+### First held-back run (rules version 2, 6 Nov)
+
+Run once at `ef06658` on Dheeraj's set (commit `538cca6` on his fork; 84 parties, 63 items). Made-up data with many
+duplicates, so these figures do not predict how often a live proposal is right.
+
+| | Known duplicates | Propose (right / wrong) | Review (right / wrong) | Missed | Excluded duplicates |
+|---|---|---|---|---|---|
+| Parties | 31 | 5 / 0 | 22 / 10 | 4 | 0 |
+| Items | 26 | 3 / 0 | 6 / 5 | 17 | 0 |
+
+The 17 item misses: 12 pairs with the same name and a shared unit but different codes (0.55, dropped; 10 of them
+repeated test-run records), and 5 whose names differ by spacing, an abbreviation or a brand word (0.15). Rules
+version 3 answers the first group and the spacing and brand cases; abbreviations remain a gap. The 4 party misses
+are in "Known gaps". Wrong review pairs were mostly two names sharing one email. The tuning set gained 9 items for
+version 3 (written by the person tuning, not copied from the held-back set); on it version 3 proposes 2 right and
+no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost of the containment rule).
 
 ## Checks that could change this plan
 

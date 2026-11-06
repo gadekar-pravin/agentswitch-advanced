@@ -10,7 +10,7 @@ from difflib import SequenceMatcher
 from itertools import combinations
 
 # Bumped whenever a change can alter which pairs are found, their scores, bands or exclusions.
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 
 PROPOSE, REVIEW = 0.9, 0.6
 BAND_ORDER = {"propose": 0, "review": 1}
@@ -22,7 +22,11 @@ BAND_ORDER = {"propose": 0, "review": 1}
 # a customer code, which belongs to one customer (_score_party).
 PARTY_WEIGHTS = {"customer_code": 0.7, "email": 0.6, "phone": 0.5, "name": 0.6, "near_name": 0.6, "website": 0.2,
                  "city_postal": 0.15}
-ITEM_WEIGHTS = {"code": 0.7, "name": 0.5, "near_name": 0.5, "category": 0.1, "uom": 0.05}
+# Rules version 3. Two items with the same name reach review on the name alone, even when their codes differ, since a
+# re-entered item usually gets a new code. A near item name reaches review with a shared unit, because half the live
+# items have no category; that also sends size variants a letter apart ("M6" and "M8") to review, where a person
+# rejects them. Neither reaches propose without a shared code.
+ITEM_WEIGHTS = {"code": 0.7, "name": 0.6, "near_name": 0.55, "category": 0.1, "uom": 0.05}
 NEAR_NAME = 0.9
 
 # A strong value held by more records than this is a shared inbox, a switchboard or a dummy, not an identity.
@@ -38,6 +42,8 @@ LEGAL_ENDINGS = {"pvt", "private", "ltd", "limited", "llp", "llc", "inc", "incor
 ORDINARY_PRIVACY = "normal"
 
 _TAG = re.compile(r"^\[([^\]]*)\]\s*")
+# Between a digit and a letter: "25mm" and "25 mm" are one size.
+_DIGIT_LETTER = re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)")
 
 
 def flag(value) -> bool:
@@ -83,6 +89,12 @@ def norm_name(name: str, test_tags=()) -> str:
     words = tokens(stripped)
     kept = [w for w in words if w not in LEGAL_ENDINGS] or words
     return " ".join(sorted(kept))
+
+
+def norm_item_name(name: str, test_tags=()) -> str:
+    """As norm_name, with numbers and units apart, so "Elbow 25mm" and "Elbow 25 mm" are the same name. The test tag
+    goes first: split, a tag such as "qa3" would no longer be recognized."""
+    return norm_name(_DIGIT_LETTER.sub(" ", strip_tag(name, test_tags)[0]))
 
 
 def norm_email(value) -> str:
@@ -151,7 +163,7 @@ def _item_keys(row, test_tags) -> dict:
     return {
         "code": norm_code(row.get("code")),
         "sku": norm_code(row.get("sku")),
-        "name": norm_name(row.get("name") or "", test_tags),
+        "name": norm_item_name(row.get("name") or "", test_tags),
         "category": norm_code(row.get("category_id")),
         "uom": norm_code(row.get("uom")),
     }
@@ -208,6 +220,16 @@ def _name_signal(a: str, b: str):
     return "near_name" if SequenceMatcher(None, a, b).ratio() >= NEAR_NAME else None
 
 
+def _contained(a: str, b: str) -> bool:
+    """One item name is the other's with words added, such as a brand in front: "Arlo Door Closer Heavy" and "Door
+    Closer Heavy". The shorter needs three words, so "Door Closer" does not meet every closer, and no added word may
+    hold a digit, since that is a size or a model ("Door Closer Heavy 300mm"). A short number added to a long name
+    can still be a near name by similarity."""
+    wa, wb = set(a.split()), set(b.split())
+    short, long_ = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
+    return len(short) >= 3 and short < long_ and not any(c.isdigit() for w in long_ - short for c in w)
+
+
 def _score_party(a, b, ka, kb, oa, ob):
     """ka, kb: keys with widely shared values blanked, for evidence. oa, ob: the same keys before blanking, for
     conflicts: a value too common to prove two records are one still shows that they disagree."""
@@ -244,7 +266,8 @@ def _score_item(_a, _b, ka, kb, oa, ob):
         if oa[key] and ob[key] and oa[key] != ob[key] and not (
                 _alias(oa[key], ob[key], oa[other], ob[other]) or _alias(ob[key], oa[key], ob[other], oa[other])):
             conflicts.append(key)
-    name = _name_signal(ka["name"], kb["name"])
+    name = _name_signal(ka["name"], kb["name"]) or (
+        "near_name" if ka["name"] and kb["name"] and _contained(ka["name"], kb["name"]) else None)
     if name:
         signals.append(name)
     for key in ("category", "uom"):

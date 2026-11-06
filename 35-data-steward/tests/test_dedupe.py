@@ -100,7 +100,7 @@ def test_a_one_letter_typo_counts_as_the_name():
     items = [item("i1", "Shrink Wrap Roll 500", "SW-500", category_id="pack"),
              item("i2", "Shrink Wrap Rol 500", "SWR-500", category_id="pack")]
     shrink = pairs("item", items)[("i1", "i2")]
-    assert (shrink["score"], shrink["band"], shrink["caps"]) == (0.65, "review", ["code differs"])
+    assert (shrink["score"], shrink["band"], shrink["caps"]) == (0.7, "review", ["code differs"])
 
 
 @pytest.mark.parametrize("shared", [{"email": "family@whitcombe.example"}, {"phone": "5552013344"}])
@@ -365,3 +365,53 @@ def test_a_shared_inbox_still_counts_as_an_email_conflict():
             party("p2", "Acme", email="owner@acme.example", phone="5552010001"), *inbox]
     p = pairs("party", rows)[("p1", "p2")]
     assert p["band"] == "review" and p["caps"] == ["email differs"]
+
+
+# Rules version 3: item name gaps found by the first held-back run (6 Nov).
+
+def test_item_names_ignore_spacing_between_a_number_and_its_unit():
+    assert dedupe.norm_item_name("Brass Elbow 20mm") == dedupe.norm_item_name("brass elbow 20 mm")
+    assert dedupe.norm_item_name("Brass Elbow 20mm") != dedupe.norm_item_name("Brass Elbow 25mm")
+    assert dedupe.norm_name("Unit 4B Traders") == "4b traders unit"  # party names are unchanged
+
+
+def test_same_item_name_reaches_review_even_with_different_codes_and_no_category():
+    p = pairs("item", [item("i1", "Site Cleaning Visit", "SCV-1", uom=None),
+                       item("i2", "Site Cleaning Visit", "CLN-9", uom=None)])[("i1", "i2")]
+    assert (p["score"], p["band"], p["caps"]) == (0.6, "review", ["code differs"])
+
+
+def test_repeated_test_run_items_reach_review_and_are_marked_tagged():
+    rows = [item("i1", "[qa-run 3] Demo Bracket", "QA-3"), item("i2", "[qa-run 4] Demo Bracket", "QA-4")]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert p["band"] == "review" and p["tagged"]
+
+
+def test_item_name_with_a_brand_in_front_is_a_near_name():
+    rows = [item("i1", "Marrow Hose Reel Wall", "MR-HRW", category_id="k"),
+            item("i2", "Hose Reel Wall", "HRW-1", category_id="k")]
+    p = pairs("item", rows)[("i1", "i2")]
+    assert "near_name" in p["signals"] and p["band"] == "review"
+    # Half the live items have no category: a near name and a shared unit are enough for review (0.55 + 0.05).
+    no_category = pairs("item", [item("i1", "Marrow Hose Reel Wall", "MR-HRW"), item("i2", "Hose Reel Wall", "HRW-1")])
+    assert no_category[("i1", "i2")]["score"] == 0.6 and no_category[("i1", "i2")]["band"] == "review"
+    no_unit = [item("i1", "Marrow Hose Reel Wall", "MR-HRW", uom=None), item("i2", "Hose Reel Wall", "HRW-1", uom=None)]
+    assert ("i1", "i2") not in pairs("item", no_unit)  # a near name alone is dropped
+
+
+def test_size_variants_a_letter_apart_go_to_review_not_propose():
+    # The accepted cost of the near-name weight: a person rejects these.
+    p = pairs("item", [item("i1", "Hex Bolt M6", "HB-M6"), item("i2", "Hex Bolt M8", "HB-M8")])[("i1", "i2")]
+    assert p["signals"] == ["near_name", "uom"] and p["band"] == "review"
+
+
+def test_a_test_tag_with_a_digit_is_stripped_before_numbers_are_split():
+    assert dedupe.norm_item_name("[qa3 run 1] Hose Reel Wall", ("qa3",)) == dedupe.norm_item_name("Hose Reel Wall")
+    assert dedupe.norm_item_name("[North2] Hose Reel", ("qa3",)) != dedupe.norm_item_name("Hose Reel")
+
+
+@pytest.mark.parametrize("short, long_", [("Hose Reel", "Marrow Hose Reel"),            # shorter has two words
+                                          ("Hose Reel Wall", "Hose Reel Wall 300mm")])  # added words are a size
+def test_item_name_containment_needs_three_words_and_no_added_number(short, long_):
+    rows = [item("i1", short, "A-1", category_id="k"), item("i2", long_, "B-2", category_id="k")]
+    assert ("i1", "i2") not in pairs("item", rows)
