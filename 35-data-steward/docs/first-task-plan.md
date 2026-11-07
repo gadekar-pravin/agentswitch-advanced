@@ -204,3 +204,17 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
   in this plan changes.
 - **The Eval Harness seat's answer.** If their check needs a platform record per proposal, add an opt-in publish
   step that needs the person's OK each run. If their copies hold seeded duplicates, use those as a further check.
+- **What the course harness checks.** Read 7 Nov: `../34-eval-harness/TASK_FORMAT.md`, written by the Eval Harness
+  seat, says a task passes only when a check on the resulting data confirms it, never because of the agent's wording.
+  A report in `local/` is not platform data, so no task can pass on it alone. For version 1 and the 12-task suite,
+  each proposal probably has to become a record on the platform, which makes the publish step above likely rather
+  than optional. That step needs its own reviewed write path; the write guard stays as it is for every other tool.
+- **Questions for the instructor.** Drafted 7 Nov; record the answers here and change the plan to match.
+  1. Where proposals go: should each be a record on the platform (an approval request, say), which record type,
+     and may the seat's login create it?
+  2. Do the test copies of Suryodaya and Keystone hold planted duplicates, missing fields or orphan records, or do
+     our tasks bring their own data?
+  3. Is there a list of required fields for parties and items on each system, or do we choose them?
+  4. Is a UI for reviewing proposals expected, or are a report and approval through the platform enough?
+  5. Must the agent use a model? Matching and scoring stay rules so results repeat and can be checked; a model
+     would handle requests in plain words and explain proposals.
