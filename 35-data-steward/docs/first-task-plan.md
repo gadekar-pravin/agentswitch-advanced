@@ -210,8 +210,8 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
   each proposal probably has to become a record on the platform, which makes the publish step above likely rather
   than optional. That step needs its own reviewed write path; the write guard stays as it is for every other tool.
 - **Questions for the instructor.** Drafted 7 Nov; record the answers here and change the plan to match.
-  1. Where proposals go: should each be a record on the platform (an approval request, say), which record type,
-     and may the seat's login create it?
+  1. Where proposals go: should each be a record on the platform, and may the seat's login create it? Is one agent
+     escalation per proposal, assigned to a person (see below), the record the course expects?
   2. Do the test copies of Suryodaya and Keystone hold planted duplicates, missing fields or orphan records, or do
      our tasks bring their own data?
   3. The platform's schemas mark which fields are required (see below). Is that the list the missing-fields check
@@ -225,3 +225,29 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
   entity's fields, types and which are required. The missing-fields check reads that list for parties and items
   instead of choosing fields by hand. What the endpoint returns is platform-derived and goes in `local/`, never in
   the repository.
+- **Escalations as the proposal record.** Seen 7 Nov in another seat's public repo (`mkthoma/files_agent`, the Files
+  seat): its agent hands each case to a named person by raising an agent escalation, and its harness checks those
+  escalations. The tool list this seat's probe saved on 6 Nov holds the same raise, assignee and escalation read
+  tools on both systems (names in `local/tools-<instance>.json`). One escalation per merge proposal, naming both
+  records, the confidence and the suggested survivor, would give the harness a record to check while the merge
+  itself stays with a person. Two cautions from that repo, both from October and to be checked again: a raise needs
+  a person from the assignee list, and when that list is empty nothing is sent (the course staff called recording
+  that the expected behaviour); and each raise opens its own agent session. Raising is a write, so it gets its own
+  reviewed path and the person's approval before any live run. That repo has no license and commits platform data:
+  read it for ideas, never copy its code or data.
+- **The Directory seat's dedupe.** Read 7 Nov (`varunsood189/A27-directory-agent`, no license, commits run files
+  from live data: read for ideas only). It groups parties by exact name after lowercasing and dropping a trailing
+  copy number such as "(2)", marks a group with one shared email, and has no score, no item matching and no
+  conflict checks. Its harness re-reads each listed party rather than trusting the agent's text. What it means here:
+  - Copy numbers. The saved Suryodaya read (6 Nov) holds 8 parties whose name ends in a copy number, each with a
+    record of the same plain name. Our report finds all 8, every pair in review at 0.6, the lowest review score. A
+    copy number is strong evidence, so it is a candidate signal for rules version 4. Not now: any change voids the
+    held-back check that rules version 3 waits on.
+  - Another proposal record. With writes on, that agent links the two parties with an "associate" relationship
+    noted as not a merge, and this seat can see the same create tool. Escalations are preferred: a link adds rows
+    to the customer data every team shares and puts nothing in front of a person.
+  - Its bug list (late September, recheck before relying on it) bears on the missing-fields and orphan checks. On
+    Suryodaya, first and last name are empty on individuals while the full name is filled, so a missing-fields
+    check must not report that as each party's own gap. On Keystone, filtering parties by customer type returns
+    none although some hold the customer role. Also on Keystone, sending the relationship list's default filter
+    hides every relationship. These are filed already; do not file them again.
