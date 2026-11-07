@@ -214,7 +214,14 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
      and may the seat's login create it?
   2. Do the test copies of Suryodaya and Keystone hold planted duplicates, missing fields or orphan records, or do
      our tasks bring their own data?
-  3. Is there a list of required fields for parties and items on each system, or do we choose them?
+  3. The platform's schemas mark which fields are required (see below). Is that the list the missing-fields check
+     should use, or are there other fields the course counts as required?
   4. Is a UI for reviewing proposals expected, or are a report and approval through the platform enough?
   5. Must the agent use a model? Matching and scoring stay rules so results repeat and can be checked; a model
      would handle requests in plain words and explain proposals.
+  6. The capstone brief for teams 01 to 27 says a test written by Claude or Codex scores zero. Does that apply to
+     the Advanced seats' 12-task suite? If it does, the suite's tasks and checks are written by hand by this seat.
+- **Where required fields come from.** Read 7 Nov in the capstone brief: the platform's schema endpoint lists every
+  entity's fields, types and which are required. The missing-fields check reads that list for parties and items
+  instead of choosing fields by hand. What the endpoint returns is platform-derived and goes in `local/`, never in
+  the repository.
