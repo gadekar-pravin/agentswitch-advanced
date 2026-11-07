@@ -221,6 +221,10 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
      would handle requests in plain words and explain proposals.
   6. The capstone brief for teams 01 to 27 says a test written by Claude or Codex scores zero. Does that apply to
      the Advanced seats' 12-task suite? If it does, the suite's tasks and checks are written by hand by this seat.
+     (Session 20 states the rule for the core seats; until answered, assume it applies here too.)
+  7. Session 20 described seat 35 as watching shared data for damage and naming its source through the audit trail,
+     using only invariants that already exist. The 2 Nov brief describes duplicates, missing fields and orphans. Is
+     tracing a problem to the job that caused it part of version 1, of the final, or no longer in scope?
 - **Where required fields come from.** Read 7 Nov in the capstone brief: the platform's schema endpoint lists every
   entity's fields, types and which are required. The missing-fields check reads that list for parties and items
   instead of choosing fields by hand. What the endpoint returns is platform-derived and goes in `local/`, never in
@@ -251,3 +255,14 @@ no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost 
     check must not report that as each party's own gap. On Keystone, filtering parties by customer type returns
     none although some hold the customer role. Also on Keystone, sending the relationship list's default filter
     hides every relationship. These are filed already; do not file them again.
+- **Session 20 (the capstone platform lesson).** Read 7 Nov. What bears on this seat:
+  - The audit trail. The seat was first defined as attributing damage to the job that caused it, naming no source
+    the log does not support (question 7). The 6 Nov tool lists hold read-only agent job and job ledger tools on
+    both systems that could do this.
+  - Orphans have a known cause: the platform does not check that a link field points at an existing record, and
+    accepts the row. The orphan check can name that as the cause; it is a known defect, so it is not filed again.
+  - Both jurisdictions are graded. The agent reads its company's locale (a read-only tool every seat has) rather
+    than assuming GST, and matching rules that depend on country, such as legal name endings and tax numbers, follow
+    it. Other seeded verticals use different words for the same tables, so no rule hard-codes a business word.
+  - Agent records mostly have no per-team owner, so any escalation this seat raises carries a seat 35 prefix and
+    the seat only ever reads or acts on its own.
