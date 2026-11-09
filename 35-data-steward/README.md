@@ -60,4 +60,7 @@ What the Markdown report shows:
 
 The report holds real party data, so it stays in `local/` and goes to the seat lead directly. Standard output is a
 counts-only summary for the pull request. How each rule was chosen is in
-[docs/first-task-plan.md](docs/first-task-plan.md).
+[docs/first-task-plan.md](docs/first-task-plan.md). For readers who don't read code,
+[docs/duplicate-rules.html](docs/duplicate-rules.html) explains the rules step by step, with diagrams, a score
+calculator and made-up examples (download it and open it in a browser; GitHub shows only its source). Update it when
+the rules version changes.
