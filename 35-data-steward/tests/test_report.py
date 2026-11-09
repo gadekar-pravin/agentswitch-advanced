@@ -90,8 +90,8 @@ def test_report_lists_bands_exclusions_and_counts(run):
     assert section(rep)["counts"]["withheld_private"] == 1
     assert section(rep)["table"] == {"rows": 10, "total": 10, "cut_off": False}
     assert rep["system"] == "keystone" and rep["date"] == "2026-11-03"
-    assert "by older (skipped references: not counted for review pairs)" in md
-    assert "### Proposed merges (1)" in md and "### Test records (1)" in md and "### Excluded by rule (1)" in md
+    assert "Selection rule: older (steps skipped: references: linked records are not counted for review pairs)" in md
+    assert "### Proposed merges (1)" in md and "### Test-record pairs (1)" in md and "### Pairs ruled out (1)" in md
 
 
 def test_private_records_never_reach_the_report(run):
@@ -157,11 +157,11 @@ def test_labels_are_shown_and_change_nothing(run):
 def test_summary_says_what_needs_a_decision(run):
     _, md, _ = run()
     head = md[:md.index("## How to read this report")]
-    assert "**Needs a decision: 2 pairs** (`party:p1:p2`, `party:p3:p4`)." in head
-    assert "| Awaiting a decision | 2 | 0 |" in head and "| Test-record pairs (not counted above) | 1 | 0 |" in head
-    assert "| Excluded by rule | 1 | 0 |" in head and "| Rows read | 10 of 10 | 1 of 1 |" in head
+    assert "**Awaiting a person's decision: 2 pairs** (`party:p1:p2`, `party:p3:p4`)." in head
+    assert "| Awaiting a person's decision | 2 | 0 |" in head and "| Test-record pairs (kept out of the pair counts above) | 1 | 0 |" in head
+    assert "| Pairs ruled out | 1 | 0 |" in head and "| Records read | 10 of 10 | 1 of 1 |" in head
     _, md, _ = run(labels={"party:p1:p2": "accepted", "party:p3:p4": "rejected"})
-    assert "**Nothing needs a decision.**" in md and "| Labelled accepted | 1 | 0 |" in md
+    assert "**Nothing awaits a person's decision** (test-record pairs aside)." in md and "| Pairs labelled accepted | 1 | 0 |" in md
 
 
 def test_markdown_from_the_saved_json_matches(run):
@@ -183,8 +183,8 @@ def test_a_mistyped_label_stops_the_run(run):
 def test_a_cut_off_table_is_reported(run):
     rep, md, _ = run(client=FakeClient({"Party": PARTIES, "Item": ITEMS}, cut_off={"Party"}))
     assert section(rep)["table"] == {"rows": 10, "total": 20, "cut_off": True}
-    assert "**The table was cut off.**" in md
-    assert "an incomplete scan does not mean there are no duplicates" in md
+    assert "**Table cut off; later rows were not compared.**" in md
+    assert "An incomplete scan can miss duplicates." in md
 
 
 @pytest.mark.parametrize("failure", [TimeoutError("read timed out"), http.client.IncompleteRead(b"")])
@@ -194,8 +194,8 @@ def test_a_failed_reference_read_is_unknown_and_the_run_goes_on(run, failure):
     assert p["references"] == {"p1": None, "p2": None}
     assert p["survivor"] == {"id": "p1", "rule": "older", "skipped": ["references"]}
     assert section(rep)["counts"]["references_unreadable"] == 2
-    assert "`p1` unknown" in md
-    assert "by older (skipped references: a count is unknown)" in md
+    assert "`p1`: unknown" in md
+    assert "Selection rule: older (steps skipped: references: a linked-record count is unknown)" in md
 
 
 def test_markdown_cells_cannot_break_the_table(run):
@@ -217,7 +217,7 @@ def test_record_text_is_literal_markdown(run):
 def test_test_tags_are_shown_with_where_they_came_from(run):
     rep, md, _ = run()
     assert rep["test_tags"] == [{"tag": "qa-run", "source": "made-up test runs, read of 1 Nov"}]
-    assert "Tags: qa-run (made-up test runs, read of 1 Nov)." in md
+    assert "was seen: qa-run (made-up test runs, read of 1 Nov)." in md
 
 
 def test_the_runner_chooses_the_instance(run, monkeypatch):

@@ -27,16 +27,20 @@ TABLES = {"party": "Party", "item": "Item"}
 LABELS = ("accepted", "rejected")
 
 NOTES = [
-    f"Confidence is the band. propose: a score of {dedupe.PROPOSE:.2f} or more with nothing holding the pair back. "
-    f"review: a score of {dedupe.REVIEW:.2f} or more that is below {dedupe.PROPOSE:.2f}, or is held at review (the "
-    f"pair says why). Pairs below {dedupe.REVIEW:.2f} are counted, not listed. Scores are rule scores from 0 to 1, "
-    "not probabilities.",
-    "How often each band is right was checked only on made-up held-back data (step 7 of the plan): no wrong "
-    "proposal there, and review pairs right about two times in three. That does not predict live results.",
-    "Survivors are suggestions. A person decides, and any change to a record is made by a person, through the "
-    "platform, with approval. This report changed nothing.",
-    "A pair not listed is not proof that two records are distinct. If a table was cut off, the rows beyond the cut "
-    "were never compared: an incomplete scan does not mean there are no duplicates.",
+    "Confidence groups (bands):\n"
+    f"  - **propose**: score {dedupe.PROPOSE:.2f} or higher, with no rule holding the pair back.\n"
+    f"  - **review**: score {dedupe.REVIEW:.2f} or higher, but below {dedupe.PROPOSE:.2f} or held back by a rule. "
+    "Each held-back pair gives the reason.\n"
+    f"  - Below {dedupe.REVIEW:.2f}: counted, not listed.\n"
+    "  - Scores run from 0 to 1. They come from rules, not probabilities.",
+    "Accuracy was checked only on made-up data held back for testing (plan, step 7):\n"
+    "  - No wrong proposals in that check; review pairs were right about two times in three.\n"
+    "  - These results do not predict accuracy on live records.",
+    "Each pair suggests which record to keep if the merge is approved. It is only a suggestion; a person decides.\n"
+    "  - A person must make every record change through the platform, with approval.\n"
+    "  - This report changed nothing.",
+    "Missing pairs do not prove that records are distinct.\n"
+    "  - If a table was cut off, rows beyond the cut were never compared. An incomplete scan can miss duplicates.",
 ]
 
 
@@ -152,27 +156,28 @@ def _code(value) -> str:
 def _pair_md(p) -> list[str]:
     a, b = p["ids"]
     lines = [f"#### {_cell(p['names'][a])} / {_cell(p['names'][b])}", "",
-             f"- Pair {_code(p['id'])}: score {p['score']:.2f}, band **{p['band']}**",
+             f"- Pair {_code(p['id'])}: score {p['score']:.2f}; confidence **{p['band']}**",
              f"- Evidence: {', '.join(p['signals']) or 'none'}"]
     if p["caps"]:
-        lines.append(f"- Held at review: {', '.join(p['caps'])}")
+        lines.append(f"- Held at review because: {', '.join(p['caps'])}")
     if p["shared_record"]:
-        lines.append("- A record here is in another pair too: review those pairs together.")
+        lines.append("- A record also appears in another pair. Review those pairs together.")
     s = p["survivor"]
-    why = {"references": "not counted for review pairs" if p["references"] is None else "a count is unknown",
+    why = {"references": "linked records are not counted for review pairs" if p["references"] is None
+           else "a linked-record count is unknown",
            "age": "a creation date is missing"}
-    skipped = f" (skipped {'; '.join(f'{step}: {why[step]}' for step in s['skipped'])})" if s["skipped"] else ""
-    lines.append(f"- Suggested survivor if a merge is approved: {_code(s['id'])}, by {s['rule']}{skipped}")
+    skipped = f" (steps skipped: {'; '.join(f'{step}: {why[step]}' for step in s['skipped'])})" if s["skipped"] else ""
+    lines.append(f"- Suggested record to keep if approved: {_code(s['id'])}. Selection rule: {s['rule']}{skipped}")
     if p["references"] is not None:
         totals = {rid: (r or {}).get("total") for rid, r in p["references"].items()}
-        lines.append("- References: " + ", ".join(f"{_code(rid)} {'unknown' if n is None else n}"
+        lines.append("- Linked records (references): " + ", ".join(f"{_code(rid)}: {'unknown' if n is None else n}"
                                                    for rid, n in totals.items()))
-    lines.append(f"- Label: {_label_text(p)}")
+    lines.append(f"- Person's label: {_label_text(p)}")
     if p["differences"]:
         lines += ["", f"| Field | {_code(a)} | {_code(b)} |", "|---|---|---|"]
         lines += [f"| {_cell(d['field'])} | {_or_empty(d['a'])} | {_or_empty(d['b'])} |" for d in p["differences"]]
     else:
-        lines += ["", "No field differences outside the hidden and bookkeeping fields."]
+        lines += ["", "No differences in the compared fields. Hidden and bookkeeping fields are not shown."]
     return lines + [""]
 
 
@@ -190,7 +195,7 @@ def _label_text(p) -> str:
 def _rows_md(pairs) -> list[str]:
     """One row per pair, for pairs a person has already labelled and for test records. The full detail of each is in
     the JSON report."""
-    lines = ["| Pair | Records | Score | Band | Evidence | Held at review | Label |", "|---|---|---|---|---|---|---|"]
+    lines = ["| Pair | Records | Score | Confidence | Evidence | Why held at review | Person's label |", "|---|---|---|---|---|---|---|"]
     for p in pairs:
         a, b = p["ids"]
         lines.append(f"| {_code(p['id'])} | {_cell(p['names'][a])} / {_cell(p['names'][b])} | {p['score']:.2f} | "
@@ -213,10 +218,10 @@ def _summary_md(report: dict) -> list[str]:
     waiting = [p["id"] for s in sections.values() for p in _awaiting(s["proposals"])]
     proposed = sum(p["band"] == "propose" and not p["tagged"] for s in sections.values() for p in s["proposals"])
     lines = ["## Summary", ""]
-    lines.append(f"**Needs a decision: {len(waiting)} pair{'s' if len(waiting) != 1 else ''}** "
-                 f"({', '.join(_code(i) for i in waiting)})." if waiting else "**Nothing needs a decision.**")
+    lines.append(f"**Awaiting a person's decision: {len(waiting)} pair{'s' if len(waiting) != 1 else ''}** "
+                 f"({', '.join(_code(i) for i in waiting)})." if waiting else "**Nothing awaits a person's decision** (test-record pairs aside).")
     if not proposed:
-        lines[-1] += " No merge is proposed on this system."
+        lines[-1] += " No merge is proposed outside test records."
     lines += ["", "| | " + " | ".join(e.capitalize() for e in sections) + " |", "|---" * (len(sections) + 1) + "|"]
 
     def row(title, fn):
@@ -231,30 +236,30 @@ def _summary_md(report: dict) -> list[str]:
         total = t["total"] if t["total"] is not None else "unknown"
         return f"{t['rows']} of {total}" + (" (**cut off**)" if t["cut_off"] else "")
 
-    lines += [row("Rows read", rows_read),
-              row("Proposed merges", lambda s: count(s, band="propose")),
-              row("For review", lambda s: count(s, band="review")),
-              row("Awaiting a decision", lambda s: len(_awaiting(s["proposals"]))),
-              row("Labelled accepted", lambda s: count(s, label="accepted")),
-              row("Labelled rejected", lambda s: count(s, label="rejected")),
-              row("Test-record pairs (not counted above)", lambda s: count(s, tagged=True)),
-              row("Excluded by rule", lambda s: len(s["excluded"])), ""]
+    lines += [row("Records read", rows_read),
+              row("Proposed merges (propose)", lambda s: count(s, band="propose")),
+              row("Pairs to review (review)", lambda s: count(s, band="review")),
+              row("Awaiting a person's decision", lambda s: len(_awaiting(s["proposals"]))),
+              row("Pairs labelled accepted", lambda s: count(s, label="accepted")),
+              row("Pairs labelled rejected", lambda s: count(s, label="rejected")),
+              row("Test-record pairs (kept out of the pair counts above)", lambda s: count(s, tagged=True)),
+              row("Pairs ruled out", lambda s: len(s["excluded"])), ""]
     return lines
 
 
 def render_markdown(report: dict) -> str:
-    lines = [f"# Duplicate report: {report['system']}, {report['date']}", "",
-             f"Rules version {report['rules_version']}. Made from the JSON report of the same name.", ""]
+    lines = [f"# Possible duplicate records: {report['system']}, {report['date']}", "",
+             f"Rules version {report['rules_version']}. Made from the JSON file with the same name.", ""]
     lines += _summary_md(report)
     lines += ["## How to read this report", ""] + [f"- {n}" for n in report["notes"]] + [""]
     for entity, s in _sections(report).items():
         t, c = s["table"], s["counts"]
         lines += [f"## {entity.capitalize()} records", "",
-                  f"Rows read: {t['rows']} of {t['total'] if t['total'] is not None else 'an unknown total'}"
-                  + (". **The table was cut off.**" if t["cut_off"] else ", the whole table."), ""]
+                  f"Records read: {t['rows']} of {t['total'] if t['total'] is not None else 'an unknown total'}"
+                  + (". **Table cut off; later rows were not compared.**" if t["cut_off"] else ". Whole table read."), ""]
         untagged = [p for p in s["proposals"] if not p["tagged"]]
         tagged = [p for p in s["proposals"] if p["tagged"]]
-        for band, title in (("propose", "Proposed merges"), ("review", "For review")):
+        for band, title in (("propose", "Proposed merges"), ("review", "Pairs to review")):
             pairs = [p for p in untagged if p["band"] == band]
             lines += [f"### {title} ({len(pairs)})", ""] + ([] if pairs else ["None.", ""])
             for p in _awaiting(pairs):
@@ -262,25 +267,27 @@ def render_markdown(report: dict) -> str:
             labelled = sorted((p for p in pairs if p.get("label")),
                               key=lambda p: (LABELS.index(p["label"]["label"]), -p["score"], p["id"]))
             if labelled:
-                lines += [f"Already labelled by a person ({len(labelled)}):", ""] + _rows_md(labelled)
-        lines += [f"### Test records ({len(tagged)})", "",
-                  "Pairs where either name carries a confirmed test-run tag. Scored and banded like the rest, listed "
-                  "one row each; the full detail is in the JSON report. Tags: "
+                lines += [f"Already labelled by a person ({len(labelled)}). Full details are in the JSON report:", ""] + _rows_md(labelled)
+        lines += [f"### Test-record pairs ({len(tagged)})", "",
+                  "At least one record name has a confirmed test-run tag. These pairs use the same scoring and "
+                  "confidence rules. Each gets one row; full details are in the JSON report. Confirmed tags, with where each "
+                  "was seen: "
                   + ("; ".join(_cell(t["tag"]) + (f" ({_cell(t['source'])})" if t["source"] else "")
                                for t in report["test_tags"]) or "none") + ".", ""]
         lines += _rows_md(tagged) if tagged else ["None.", ""]
-        lines += [f"### Excluded by rule ({len(s['excluded'])})", ""] + ([] if s["excluded"] else ["None."])
+        lines += [f"### Pairs ruled out ({len(s['excluded'])})", ""] + ([] if s["excluded"] else ["None."])
         lines += [f"- {_code(p['id'])} {_cell(p['names'][p['ids'][0]])} / {_cell(p['names'][p['ids'][1]])}: "
-                  f"{p['reason']} (score {p['score']:.2f})" for p in s["excluded"]]
-        lines += ["", "### Not listed", "",
-                  f"- Pairs below review: {c['dropped']}",
-                  f"- Records withheld for privacy (details left out): {c['withheld_private']}",
-                  f"- Repeated ids (first copy kept): {c['repeated_ids']}",
-                  f"- Values too widely shared to count as evidence: {c['ignored_shared'] or 'none'}",
-                  f"- Groups too common to compare: {c['skipped_blocks']}",
-                  f"- Records whose references could not be read: {c['references_unreadable']}", ""]
+                  f"ruled out because: {p['reason']} (score {p['score']:.2f})" for p in s["excluded"]]
+        lines += ["", "### Omissions and limits", "",
+                  f"- Pairs below the review threshold, not listed: {c['dropped']}",
+                  f"- Records withheld for privacy; details omitted: {c['withheld_private']}",
+                  f"- Repeated record IDs; first copy kept: {c['repeated_ids']}",
+                  f"- Values shared too widely to count as evidence: {c['ignored_shared'] or 'none'}",
+                  f"- Groups not compared because they are too common: {c['skipped_blocks']}",
+                  f"- Records whose linked-record counts could not be read: {c['references_unreadable']}", ""]
     stale = report["labels"]["not_in_this_run"]
-    lines += ["## Labels", "", f"Applied: {report['labels']['applied']}. Not in this run: {len(stale)}"
+    lines += ["## Saved labels", "", f"Labels shown beside pairs: {report['labels']['applied']}. "
+              f"Labels with no matching pair in this report: {len(stale)}"
               + (f" ({', '.join(_code(i) for i in stale)})" if stale else "") + "."]
     return "\n".join(lines) + "\n"
 
