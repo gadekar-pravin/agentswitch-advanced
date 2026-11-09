@@ -91,7 +91,7 @@ def test_report_lists_bands_exclusions_and_counts(run):
     assert section(rep)["table"] == {"rows": 10, "total": 10, "cut_off": False}
     assert rep["system"] == "keystone" and rep["date"] == "2026-11-03"
     assert "by older (skipped references: not counted for review pairs)" in md
-    assert "### Proposed merges (1)" in md and "### Test records (1)" in md and "### Never proposed (1)" in md
+    assert "### Proposed merges (1)" in md and "### Test records (1)" in md and "### Excluded by rule (1)" in md
 
 
 def test_private_records_never_reach_the_report(run):
@@ -150,7 +150,29 @@ def test_labels_are_shown_and_change_nothing(run):
                                                                                if k != "label"}
     assert labelled["party:p1:p2"]["label"] == {"label": "accepted", "note": None}
     assert rep["labels"] == {"applied": 2, "not_in_this_run": ["party:x:y"]}
-    assert "- Label: rejected (two clinics)" in md
+    assert "| 0.60 | review | name |  | rejected (two clinics) |" in md
+    assert "#### Larkspur" not in md  # a labelled pair is one row, not a full block
+
+
+def test_summary_says_what_needs_a_decision(run):
+    _, md, _ = run()
+    head = md[:md.index("## How to read this report")]
+    assert "**Needs a decision: 2 pairs** (`party:p1:p2`, `party:p3:p4`)." in head
+    assert "| Awaiting a decision | 2 | 0 |" in head and "| Test-record pairs (not counted above) | 1 | 0 |" in head
+    assert "| Excluded by rule | 1 | 0 |" in head and "| Rows read | 10 of 10 | 1 of 1 |" in head
+    _, md, _ = run(labels={"party:p1:p2": "accepted", "party:p3:p4": "rejected"})
+    assert "**Nothing needs a decision.**" in md and "| Labelled accepted | 1 | 0 |" in md
+
+
+def test_markdown_from_the_saved_json_matches(run):
+    rep, md, _ = run()
+    assert report.render_markdown(rep) == md  # parties first even though the JSON's keys are sorted
+
+
+def test_test_records_are_one_row_each(run):
+    _, md, _ = run()
+    assert "| `party:p5:p6` | \\[qa-run 3\\] Halden Roe / \\[qa-run 4\\] Halden Roe | 0.60 | review |" in md
+    assert "#### \\[qa-run 3\\]" not in md
 
 
 def test_a_mistyped_label_stops_the_run(run):

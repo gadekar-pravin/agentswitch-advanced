@@ -27,7 +27,10 @@ TABLES = {"party": "Party", "item": "Item"}
 LABELS = ("accepted", "rejected")
 
 NOTES = [
-    "Scores are rule scores from 0 to 1, not probabilities.",
+    f"Confidence is the band. propose: a score of {dedupe.PROPOSE:.2f} or more with nothing holding the pair back. "
+    f"review: a score of {dedupe.REVIEW:.2f} or more that is below {dedupe.PROPOSE:.2f}, or is held at review (the "
+    f"pair says why). Pairs below {dedupe.REVIEW:.2f} are counted, not listed. Scores are rule scores from 0 to 1, "
+    "not probabilities.",
     "How often each band is right was checked only on made-up held-back data (step 7 of the plan): no wrong "
     "proposal there, and review pairs right about two times in three. That does not predict live results.",
     "Survivors are suggestions. A person decides, and any change to a record is made by a person, through the "
@@ -159,28 +162,92 @@ def _pair_md(p) -> list[str]:
     why = {"references": "not counted for review pairs" if p["references"] is None else "a count is unknown",
            "age": "a creation date is missing"}
     skipped = f" (skipped {'; '.join(f'{step}: {why[step]}' for step in s['skipped'])})" if s["skipped"] else ""
-    lines.append(f"- Suggested survivor: {_code(s['id'])}, by {s['rule']}{skipped}")
+    lines.append(f"- Suggested survivor if a merge is approved: {_code(s['id'])}, by {s['rule']}{skipped}")
     if p["references"] is not None:
         totals = {rid: (r or {}).get("total") for rid, r in p["references"].items()}
         lines.append("- References: " + ", ".join(f"{_code(rid)} {'unknown' if n is None else n}"
                                                    for rid, n in totals.items()))
-    label = p.get("label")
-    lines.append(f"- Label: {label['label'] + (' (' + _cell(label['note']) + ')' if label.get('note') else '')}"
-                 if label else "- Label: none yet")
+    lines.append(f"- Label: {_label_text(p)}")
     if p["differences"]:
         lines += ["", f"| Field | {_code(a)} | {_code(b)} |", "|---|---|---|"]
-        lines += [f"| {_cell(d['field'])} | {'' if d['a'] is None else _cell(d['a'])} | "
-                  f"{'' if d['b'] is None else _cell(d['b'])} |" for d in p["differences"]]
+        lines += [f"| {_cell(d['field'])} | {_or_empty(d['a'])} | {_or_empty(d['b'])} |" for d in p["differences"]]
     else:
         lines += ["", "No field differences outside the hidden and bookkeeping fields."]
     return lines + [""]
 
 
+def _or_empty(value) -> str:
+    return "(empty)" if value is None else _cell(value)
+
+
+def _label_text(p) -> str:
+    label = p.get("label")
+    if not label:
+        return "none yet"
+    return label["label"] + (f" ({_cell(label['note'])})" if label.get("note") else "")
+
+
+def _rows_md(pairs) -> list[str]:
+    """One row per pair, for pairs a person has already labelled and for test records. The full detail of each is in
+    the JSON report."""
+    lines = ["| Pair | Records | Score | Band | Evidence | Held at review | Label |", "|---|---|---|---|---|---|---|"]
+    for p in pairs:
+        a, b = p["ids"]
+        lines.append(f"| {_code(p['id'])} | {_cell(p['names'][a])} / {_cell(p['names'][b])} | {p['score']:.2f} | "
+                     f"{p['band']} | {', '.join(p['signals']) or 'none'} | {', '.join(p['caps']) or ''} | "
+                     f"{_label_text(p)} |")
+    return lines + [""]
+
+
+def _awaiting(pairs) -> list[dict]:
+    return [p for p in pairs if not p["tagged"] and not p.get("label")]
+
+
+def _sections(report: dict) -> dict:
+    """Parties first, then items, also when the report was read back from its JSON (whose keys are sorted)."""
+    return {e: report["sections"][e] for e in sorted(report["sections"], key=list(TABLES).index)}
+
+
+def _summary_md(report: dict) -> list[str]:
+    sections = _sections(report)
+    waiting = [p["id"] for s in sections.values() for p in _awaiting(s["proposals"])]
+    proposed = sum(p["band"] == "propose" and not p["tagged"] for s in sections.values() for p in s["proposals"])
+    lines = ["## Summary", ""]
+    lines.append(f"**Needs a decision: {len(waiting)} pair{'s' if len(waiting) != 1 else ''}** "
+                 f"({', '.join(_code(i) for i in waiting)})." if waiting else "**Nothing needs a decision.**")
+    if not proposed:
+        lines[-1] += " No merge is proposed on this system."
+    lines += ["", "| | " + " | ".join(e.capitalize() for e in sections) + " |", "|---" * (len(sections) + 1) + "|"]
+
+    def row(title, fn):
+        return f"| {title} | " + " | ".join(str(fn(s)) for s in sections.values()) + " |"
+
+    def count(s, band=None, label=None, tagged=False):
+        return sum(p["tagged"] == tagged and (band is None or p["band"] == band)
+                   and (label is None or (p.get("label") or {}).get("label") == label) for p in s["proposals"])
+
+    def rows_read(s):
+        t = s["table"]
+        total = t["total"] if t["total"] is not None else "unknown"
+        return f"{t['rows']} of {total}" + (" (**cut off**)" if t["cut_off"] else "")
+
+    lines += [row("Rows read", rows_read),
+              row("Proposed merges", lambda s: count(s, band="propose")),
+              row("For review", lambda s: count(s, band="review")),
+              row("Awaiting a decision", lambda s: len(_awaiting(s["proposals"]))),
+              row("Labelled accepted", lambda s: count(s, label="accepted")),
+              row("Labelled rejected", lambda s: count(s, label="rejected")),
+              row("Test-record pairs (not counted above)", lambda s: count(s, tagged=True)),
+              row("Excluded by rule", lambda s: len(s["excluded"])), ""]
+    return lines
+
+
 def render_markdown(report: dict) -> str:
     lines = [f"# Duplicate report: {report['system']}, {report['date']}", "",
              f"Rules version {report['rules_version']}. Made from the JSON report of the same name.", ""]
-    lines += [f"- {n}" for n in report["notes"]] + [""]
-    for entity, s in report["sections"].items():
+    lines += _summary_md(report)
+    lines += ["## How to read this report", ""] + [f"- {n}" for n in report["notes"]] + [""]
+    for entity, s in _sections(report).items():
         t, c = s["table"], s["counts"]
         lines += [f"## {entity.capitalize()} records", "",
                   f"Rows read: {t['rows']} of {t['total'] if t['total'] is not None else 'an unknown total'}"
@@ -190,16 +257,19 @@ def render_markdown(report: dict) -> str:
         for band, title in (("propose", "Proposed merges"), ("review", "For review")):
             pairs = [p for p in untagged if p["band"] == band]
             lines += [f"### {title} ({len(pairs)})", ""] + ([] if pairs else ["None.", ""])
-            for p in pairs:
+            for p in _awaiting(pairs):
                 lines += _pair_md(p)
+            labelled = sorted((p for p in pairs if p.get("label")),
+                              key=lambda p: (LABELS.index(p["label"]["label"]), -p["score"], p["id"]))
+            if labelled:
+                lines += [f"Already labelled by a person ({len(labelled)}):", ""] + _rows_md(labelled)
         lines += [f"### Test records ({len(tagged)})", "",
-                  "Pairs where either name carries a confirmed test-run tag. Scored and banded like the rest. Tags: "
+                  "Pairs where either name carries a confirmed test-run tag. Scored and banded like the rest, listed "
+                  "one row each; the full detail is in the JSON report. Tags: "
                   + ("; ".join(_cell(t["tag"]) + (f" ({_cell(t['source'])})" if t["source"] else "")
                                for t in report["test_tags"]) or "none") + ".", ""]
-        lines += [] if tagged else ["None.", ""]
-        for p in tagged:
-            lines += _pair_md(p)
-        lines += [f"### Never proposed ({len(s['excluded'])})", ""] + ([] if s["excluded"] else ["None."])
+        lines += _rows_md(tagged) if tagged else ["None.", ""]
+        lines += [f"### Excluded by rule ({len(s['excluded'])})", ""] + ([] if s["excluded"] else ["None."])
         lines += [f"- {_code(p['id'])} {_cell(p['names'][p['ids'][0]])} / {_cell(p['names'][p['ids'][1]])}: "
                   f"{p['reason']} (score {p['score']:.2f})" for p in s["excluded"]]
         lines += ["", "### Not listed", "",
