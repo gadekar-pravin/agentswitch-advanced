@@ -28,7 +28,8 @@ LABELS = ("accepted", "rejected")
 
 NOTES = [
     "Scores are rule scores from 0 to 1, not probabilities.",
-    "How often each band is right has not been checked yet (step 7 of the plan): every band is unchecked.",
+    "How often each band is right was checked only on made-up held-back data (step 7 of the plan): no wrong "
+    "proposal there, and review pairs right about two times in three. That does not predict live results.",
     "Survivors are suggestions. A person decides, and any change to a record is made by a person, through the "
     "platform, with approval. This report changed nothing.",
     "A pair not listed is not proof that two records are distinct. If a table was cut off, the rows beyond the cut "

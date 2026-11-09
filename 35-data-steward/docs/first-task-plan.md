@@ -102,7 +102,7 @@ These are listed in their own section of the report, with the reason, and never 
 
 - Either party is flagged as an allowed duplicate.
 - Either party's privacy state is anything other than the ordinary one. These are counted, and their details are
-  left out of the report. Which states exist is noted in `local/`, not here.
+  left out of the report. The ordinary state's name is in the code; the others are noted in `local/`.
 - Both records name a company and the companies differ. A missing company proves nothing either way.
 - An individual and an organisation.
 - Items of different kinds or different units of measure. When an item lists variants, also variants of one item.

@@ -136,9 +136,10 @@ def test_rejected_login_is_a_plain_error_and_not_retried(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("seat@example.test", "wrong"))
     _http, calls = fake_http([AuthExpired("login")])
     monkeypatch.setattr(mcp_client, "_http", _http)
-    with pytest.raises(RuntimeError, match="HTTP 401"):
+    with pytest.raises(RuntimeError, match="HTTP 401") as failed:
         mcp_client.Session("suryodaya")
     assert len(calls) == 1 and calls[0]["retries"] == 0
+    assert "seat@example.test" not in str(failed.value)  # the login name stays out of pasted output
 
 
 def test_list_all_without_total_reports_rows_left_behind(monkeypatch):
@@ -149,10 +150,30 @@ def test_list_all_without_total_reports_rows_left_behind(monkeypatch):
     assert len(rows) == 3 and rows.truncated is True and rows.total is None
 
 
-def test_list_all_without_total_ending_short_is_complete(monkeypatch):
-    c, _ = client(monkeypatch, [ok({"structuredContent": [{"id": 1}, {"id": 2}]}), ok({"structuredContent": [{"id": 3}]})])
-    rows = c.list_all("Party", page=2)
-    assert len(rows) == 3 and rows.truncated is False and rows.total == 3
+def test_list_all_without_total_ends_only_on_an_empty_page(monkeypatch):
+    # A short page may be a server cap, not the end: the duplicate of id 1 is on the page after it.
+    c, calls = client(monkeypatch, [ok({"structuredContent": [{"id": 1}, {"id": 2}]}),
+                                    ok({"structuredContent": [{"id": 3}]}),
+                                    ok({"structuredContent": [{"id": 4, "name": "copy of 1"}]}),
+                                    ok({"structuredContent": []})])
+    rows = c.list_all("Party", page=3)
+    assert [r["id"] for r in rows] == [1, 2, 3, 4] and rows.truncated is False and rows.total == 4
+    assert [call["body"]["params"]["arguments"]["offset"] for call in calls] == [0, 2, 3, 4]
+
+
+def test_list_all_with_a_capped_page_keeps_reading_to_the_total(monkeypatch):
+    pages = [ok({"structuredContent": {"data": [{"id": i} for i in range(n, min(n + 2, 5))], "total": 5}})
+             for n in (0, 2, 4)]
+    c, _ = client(monkeypatch, pages)
+    rows = c.list_all("Party", page=200)
+    assert [r["id"] for r in rows] == [0, 1, 2, 3, 4] and rows.truncated is False
+
+
+def test_list_all_refuses_a_server_that_ignores_the_offset(monkeypatch):
+    same = ok({"structuredContent": [{"id": 1}, {"id": 2}]})
+    c, _ = client(monkeypatch, [same, same])
+    with pytest.raises(McpError, match="offset ignored"):
+        c.list_all("Party", page=3)
 
 
 def test_list_all_keeps_a_total_a_later_page_omits(monkeypatch):
@@ -232,6 +253,27 @@ def test_real_session_logs_in_once_when_token_expires(monkeypatch, tmp_path):
     assert session.with_reauth(call) == "ok"
     assert tokens == ["stale", "fresh"] and len(logins) == 1
     assert (tmp_path / "seat35-keystone.token").read_text() == "fresh"
+
+
+def test_a_refreshed_token_is_private_even_over_a_loose_file_or_a_symlink(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_client, "TOKEN_DIR", tmp_path)
+    monkeypatch.setattr(mcp_client.config, "credentials", lambda instance: ("seat@example.test", "pw"))
+    monkeypatch.setattr(mcp_client, "_http", lambda url, body=None, token=None, **kw: (200, {"token": "fresh"}))
+    loose = tmp_path / "seat35-keystone.token"
+    loose.write_text("")  # empty: the session logs in
+    loose.chmod(0o644)
+    mcp_client.Session("keystone")
+    assert loose.read_text() == "fresh" and loose.stat().st_mode & 0o777 == 0o600
+    target = tmp_path / "elsewhere"
+    target.write_text("keep")
+    (tmp_path / "seat35-suryodaya.token").symlink_to(target)
+    monkeypatch.setattr(mcp_client.Session, "__init__", lambda self, instance: None)
+    s = mcp_client.Session.__new__(mcp_client.Session)
+    s.platform, s.instance, s.base = None, "suryodaya", "https://instance.example"
+    s._token_file = tmp_path / "seat35-suryodaya.token"
+    s.login()
+    assert target.read_text() == "keep" and not s._token_file.is_symlink()
+    assert s._token_file.read_text() == "fresh" and s._token_file.stat().st_mode & 0o777 == 0o600
 
 
 def test_reauth_skips_login_when_another_call_already_refreshed(monkeypatch, tmp_path):

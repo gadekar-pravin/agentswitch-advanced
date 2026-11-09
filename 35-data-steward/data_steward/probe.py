@@ -12,12 +12,13 @@ from collections import Counter
 
 from . import config
 from .mcp_client import McpClient, Session
+from .report import _write_private
 
 
 def probe(instance: str) -> dict[str, dict]:
     tools = McpClient(Session(instance)).tools()
     config.LOCAL_DIR.mkdir(exist_ok=True)
-    (config.LOCAL_DIR / f"tools-{instance}.json").write_text(json.dumps(tools, indent=2, sort_keys=True))
+    _write_private(config.LOCAL_DIR / f"tools-{instance}.json", json.dumps(tools, indent=2, sort_keys=True))
     return tools
 
 

@@ -5,6 +5,7 @@ A JSON-RPC error still arrives as HTTP 200, so every call inspects the envelope.
 import http.client
 import json
 import os
+import tempfile
 import threading
 import time
 import urllib.error
@@ -140,14 +141,23 @@ class Session:
         except AuthExpired:
             # On the login endpoint a 401 means wrong credentials, not an expired token: re-logging in would only
             # spend another of the ten tries.
-            raise RuntimeError(f"login failed on {self.instance}: HTTP 401 (check the password for {email})") from None
+            # The login name stays out of the message: failure output gets pasted into chats and bug reports.
+            raise RuntimeError(
+                f"login failed on {self.instance}: HTTP 401 (check SEAT35_EMAIL and the password)") from None
         if status != 200 or not payload or "token" not in payload:
             raise RuntimeError(f"login failed on {self.instance}: HTTP {status}")
         self.token = payload["token"]
         TOKEN_DIR.mkdir(exist_ok=True)
-        fd = os.open(self._token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(self.token)
+        # A new private file replacing the old one: rewriting in place would keep an existing file's looser mode,
+        # and would follow a symlink left in its place.
+        fd, tmp = tempfile.mkstemp(dir=TOKEN_DIR, prefix=".token.")  # created 0600
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(self.token)
+            os.replace(tmp, self._token_file)
+        except BaseException:
+            os.unlink(tmp)
+            raise
         return payload
 
     def with_reauth(self, fn):
@@ -222,6 +232,8 @@ class McpClient:
                            {"code": "refused"})
         result = self.session.with_reauth(
             lambda: self._rpc("tools/call", {"name": name, "arguments": arguments or {}}))
+        if not isinstance(result, dict):
+            raise McpError("bad_reply", f"{name} returned no result", result)
         blocks = result.get("content")
         if result.get("structuredContent") is not None:
             content = result["structuredContent"]
@@ -240,7 +252,7 @@ class McpClient:
     def list_all(self, entity: str, page: int = 200, max_rows: int = LIST_ALL_MAX_ROWS, **filters) -> RowPage:
         """Every matching row, up to a ceiling that is never crossed silently: `RowPage.truncated` says it was hit,
         because a partial table that reads as a whole one would hide duplicates in the rows left behind."""
-        rows, offset, total = RowPage(), 0, None
+        rows, offset, total, seen = RowPage(), 0, None, set()
         while True:
             res = self.call(f"{entity}.list", {"limit": page, "offset": offset, **filters})
             if isinstance(res, dict) and not isinstance(res.get("data"), list):
@@ -249,9 +261,16 @@ class McpClient:
             batch = res["data"] if isinstance(res, dict) else res
             if isinstance(res, dict) and res.get("total") is not None:
                 total = res["total"]
+            ids = {str(r.get("id")) for r in batch if isinstance(r, dict)}
+            if ids and ids <= seen:
+                # The same rows again: the server ignored the offset, and paging on would only repeat them.
+                raise McpError("bad_reply", f"{entity}.list repeated a page (offset ignored)", None)
+            seen |= ids
             rows.extend(batch[:max(0, max_rows - len(rows))])
             offset += len(batch)
-            exhausted = not batch or len(batch) < page or (total is not None and offset >= total)
+            # A short page is not the end: a server may cap a page below the requested limit. Only an empty page,
+            # or reaching the reported total, is.
+            exhausted = not batch or (total is not None and offset >= total)
             if exhausted and offset <= len(rows):
                 rows.total = total if total is not None else len(rows)
                 rows.truncated = rows.total > len(rows)
