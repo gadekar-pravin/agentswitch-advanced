@@ -57,7 +57,7 @@ the record of the seat's work, so make one per logical change.
 | `data_steward/proposals.py` | merge proposals: suggested survivor, field differences, reference counts (read-only calls) |
 | `data_steward/report.py` | the scan and the JSON and Markdown report behind `python -m data_steward.dedupe` |
 | `docs/first-task-plan.md` | the first-task plan: decisions, signals, exclusions, build steps |
-| `tests/` | offline tests; every network call is faked. `tests/data/dedupe_tuning.json` is the made-up tuning set |
+| `tests/` | offline tests; every network call is faked. `tests/data/dedupe_tuning.json` is the made-up tuning set; `dedupe_heldback*.json` are the held-back sets (see the plan) |
 | `local/` | git-ignored platform-derived output: tool lists, reads, reports, test tags, labels |
 
 ## Commands

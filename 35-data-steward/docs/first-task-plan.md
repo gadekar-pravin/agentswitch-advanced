@@ -132,7 +132,7 @@ count makes the survivor rule skip the reference step and say so. Either way, ma
 | 4b | The other person on the seat writes the held-back set (see "Held-back set" below) the same way, with no entity shared with the tuning set, commits it, and does not tune. The person tuning does not open it until step 7. | (in 4) | none |
 | 5 | Proposals: survivor suggestion, field differences, reference counts | 4 | done |
 | 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | done; run on both systems 3 Nov |
-| 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | rules version 2 frozen 3 Nov and checked once 6 Nov (see "First held-back run"); rules version 3 tuned 6 Nov, waits on a new held-back set |
+| 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | rules version 2 frozen 3 Nov and checked once 6 Nov; rules version 3 frozen at `457799b` 6 Nov and checked once 9 Nov on a new set (see "Held-back runs") |
 | 8 | README and AGENTS.md updates, pull request, review | 2 | step 7 |
 | | Buffer | 1.5 | |
 
@@ -141,10 +141,11 @@ and orphan checks, and the 12-task suite (30 Nov).
 
 ## Held-back set (step 4b)
 
-The one honest check of the matcher: data the tuner never saw, run once against the frozen rules. The matcher is
-frozen at the commit that sets rules version 3. The first set checked rules version 2 and has been seen by the
-person tuning, so it cannot check version 3: a new set is needed, with no entity shared with the tuning set or
-with the first set.
+The one honest check of the matcher: data the tuner never saw, run once against the frozen rules. Two sets so far,
+both by Dheeraj and kept in `tests/data/`: `dedupe_heldback.json` checked rules version 2, and
+`dedupe_heldback_v3.json` checked rules version 3 (frozen at `457799b`). Both have now been seen by the person
+tuning, so any rules change that can affect pairs, scores, bands or exclusions needs a third set, with no entity
+shared with the tuning set or the first two.
 
 **Who:** the other person on the seat (Dheeraj), not the person tuning (Pravin).
 
@@ -181,7 +182,9 @@ proposals, known misses, and exclusions. These are figures from made-up data and
 proposal is right. Any later change that can affect pairs, scores, bands or exclusions voids the check and needs a
 new held-back set.
 
-### First held-back run (rules version 2, 6 Nov)
+### Held-back runs
+
+#### First run (rules version 2, 6 Nov)
 
 Run once at `ef06658` on Dheeraj's set (commit `538cca6` on his fork; 84 parties, 63 items). Made-up data with many
 duplicates, so these figures do not predict how often a live proposal is right.
@@ -197,6 +200,29 @@ version 3 answers the first group and the spacing and brand cases; abbreviations
 are in "Known gaps". Wrong review pairs were mostly two names sharing one email. The tuning set gained 9 items for
 version 3 (written by the person tuning, not copied from the held-back set); on it version 3 proposes 2 right and
 no wrong, and reviews 5 right and 1 wrong (a name with one word added, the cost of the containment rule).
+
+#### Second run (rules version 3, 9 Nov)
+
+Run once at `457799b` on Dheeraj's second set (commit `0084782` on his fork; 98 parties, 72 items; no name, email,
+phone or code shared with the tuning set or the first set). The commits after `457799b` and before the run changed
+only this plan.
+
+| | Known duplicates | Propose (right / wrong) | Review (right / wrong) | Missed | Excluded duplicates |
+|---|---|---|---|---|---|
+| Parties | 36 | 8 / 0 | 23 / 10 | 5 | 0 |
+| Items | 28 | 3 / 0 | 22 / 13 | 3 | 0 |
+
+- **Missed.** Items, 3: abbreviations and units written differently ("Three-Quarter Inch" and "3/4 in", "Galv" and
+  "Galvanised", "1kg" and "1000 g"). Parties, 5: a one-word typo name never compared, "Lab" and "Laboratory" with a
+  7-digit phone, an "[OLD]" prefix, initials ("S. P." and two first names), and a name whose accented letters were
+  garbled by a wrong character encoding. All but the last are in "Known gaps"; that one is added here as a gap.
+- **Wrong in review.** Items: 9 of 13 are sizes or ratings of one product (150mm and 200mm, 5L and 2.5L, 230V and
+  110V), the accepted cost of rules version 3; 3 are numbered test fixtures ("Fixture Item 3" and "4"); 1 is two
+  different products sharing a code. Parties: mostly two names sharing one email, as in the first run.
+- **How far this goes.** This set covers the same kinds of cases as the first, often case for case, and rules
+  version 3 was written after seeing the first set's misses. So these figures are likely kinder than a set of new
+  kinds of cases would be. No wrong proposal in either run (11 of 11 proposals right on the second set), but that
+  rests on few proposals. Made-up data: they do not predict how often a live proposal is right.
 
 ## Checks that could change this plan
 

@@ -220,6 +220,20 @@ def test_tuning_set_labels_name_real_records(entity):
     assert set(labelled) <= ids
 
 
+@pytest.mark.parametrize("name", ["dedupe_heldback.json", "dedupe_heldback_v3.json"])
+def test_held_back_sets_are_well_formed(name):
+    # Their results are recorded in the plan, not asserted: they were run once, at the frozen commits.
+    import json
+    from pathlib import Path
+    data = json.loads((Path(__file__).parent / "data" / name).read_text())
+    for entity in ("party", "item"):
+        ids = [r["id"] for r in data[entity]]
+        assert len(ids) == len(set(ids))
+        labelled = data["labels"][entity]
+        assert {i for kind in ("duplicates", "distinct") for pair in labelled[kind] for i in pair} <= set(ids)
+        assert not {tuple(sorted(p)) for p in labelled["duplicates"]} & {tuple(sorted(p)) for p in labelled["distinct"]}
+
+
 @pytest.mark.parametrize("entity", ["party", "item"])
 def test_tuning_set_never_proposes_a_known_non_duplicate(entity):
     # Accuracy is measured, not asserted (step 7); proposing a known non-duplicate is a safety failure at any weights.
