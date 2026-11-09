@@ -90,7 +90,7 @@ def test_report_lists_bands_exclusions_and_counts(run):
     assert section(rep)["counts"]["withheld_private"] == 1
     assert section(rep)["table"] == {"rows": 10, "total": 10, "cut_off": False}
     assert rep["system"] == "keystone" and rep["date"] == "2026-11-03"
-    assert "Selection rule: older (steps skipped: references: linked records are not counted for review pairs)" in md
+    assert "Selection rule: created earlier (steps skipped: linked-record count: linked records are not counted for review pairs)" in md
     assert "### Proposed merges (1)" in md and "### Test-record pairs (1)" in md and "### Pairs ruled out (1)" in md
 
 
@@ -150,7 +150,7 @@ def test_labels_are_shown_and_change_nothing(run):
                                                                                if k != "label"}
     assert labelled["party:p1:p2"]["label"] == {"label": "accepted", "note": None}
     assert rep["labels"] == {"applied": 2, "not_in_this_run": ["party:x:y"]}
-    assert "| 0.60 | review | name |  | rejected (two clinics) |" in md
+    assert "| 0.60 | review | same name |  | rejected (two clinics) |" in md
     assert "#### Larkspur" not in md  # a labelled pair is one row, not a full block
 
 
@@ -167,6 +167,15 @@ def test_summary_says_what_needs_a_decision(run):
 def test_markdown_from_the_saved_json_matches(run):
     rep, md, _ = run()
     assert report.render_markdown(rep) == md  # parties first even though the JSON's keys are sorted
+
+
+def test_matcher_terms_are_shown_in_plain_words_and_the_json_keeps_them(run):
+    rep, md, _ = run()
+    assert "- Evidence (shared by both records): email, same name" in md
+    assert "ruled out because: different party types (score 1.00)" in md
+    assert "Selection rule: more linked records" in md
+    assert section(rep)["excluded"][0]["reason"] == "individual and organisation"
+    assert report._say(["a term with no plain words [x]"]) == "a term with no plain words \\[x\\]"
 
 
 def test_test_records_are_one_row_each(run):
@@ -195,7 +204,7 @@ def test_a_failed_reference_read_is_unknown_and_the_run_goes_on(run, failure):
     assert p["survivor"] == {"id": "p1", "rule": "older", "skipped": ["references"]}
     assert section(rep)["counts"]["references_unreadable"] == 2
     assert "`p1`: unknown" in md
-    assert "Selection rule: older (steps skipped: references: a linked-record count is unknown)" in md
+    assert "Selection rule: created earlier (steps skipped: linked-record count: a linked-record count is unknown)" in md
 
 
 def test_markdown_cells_cannot_break_the_table(run):
