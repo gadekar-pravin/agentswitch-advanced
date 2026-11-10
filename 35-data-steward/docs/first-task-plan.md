@@ -172,6 +172,64 @@ platform. The matcher stays at rules version 3.
 
 Question 7 (tracing damage to the job that caused it) stays out of version 1 until answered.
 
+## Rules version 4 (planned 10 Nov, after 15 Nov)
+
+A review of rules version 3 on 10 Nov found gaps that no saved read shows today (0 proposals on either system, no
+repeated id, no country-coded dummy phone, no item listing its own code as a variant) but a new read could. The worst
+case is V2: a wrong proposal there becomes a platform record. So version 4 is needed before V2 publishes, not for
+15 Nov. The 13 Nov results file and the 15 Nov handover stay on version 3.
+
+**Only stricter.** Version 4 moves pairs from propose to review, or withholds them. It never makes a new proposal.
+That is what makes it checkable without a new held-back set (see "How it is checked").
+
+| # | Change | Gap it closes |
+|---|---|---|
+| R1 | Without a shared customer code, a party pair reaches propose only with the same name after normalizing and a shared email or phone. Otherwise it is held at review with a new cap. This takes in the near-name cap, which stays under its own wording. | Different names sharing an email and a phone propose at 1.0 (a household, or one owner of two firms). A blank or placeholder name does the same. Same name, website host and city with no shared contact proposes at 0.95; a website is compared by host only, so two listings on one marketplace share a "website". |
+| R2 | A phone whose last ten digits are one repeated digit is no phone. | `+91 0000000000` counts as a real phone today. |
+| R3 | If any copy of a party id is under a privacy state other than the ordinary one, or none, every copy is withheld, in either order. The report's count says it counts rows. | A second, ordinary copy of a withheld id can be paired. |
+
+The renamed company sharing an email and a phone moves from propose to review. That is the cost of R1, and it is the
+same choice as the household rule for near names. Not in version 4, recorded under "Known gaps" instead:
+- An item listing its own code among its variants is excluded as a variant of its duplicate. Fixing that could make
+  new proposals, which this check cannot cover.
+- Unit spellings ("kg" and "Kgs") exclude a pair. Each system uses a fixed list today.
+
+**Also, on version 3, docs only (before 15 Nov):** add the gaps above to "Known gaps" and "Never proposed" (the privacy
+line promises more than the code does). Correct:
+- phone numbers match on their last ten digits;
+- a value held by more than 5 records still counts as a conflict;
+- a near item name also reaches review with a shared category alone;
+- the 50-record skip applies to every grouping key;
+- `tokens` drops combining accents in every script.
+
+Docstrings inside `dedupe.py` change with version 4, so no version 3 commit touches the matcher file.
+
+**How it is checked.** There will be no new held-back set from Dheeraj or the instructor (10 Nov). This replaces
+step 7's rule for this version, with the seat lead's agreement:
+1. Before the change, Pravin adds tuning cases for each kind R1 to R3 covers, both duplicates and distinct ones. These
+   are not blind: the same person writes the rules.
+2. Unit tests: one per change, plus the exporter's wording for the new cap in `report.py` and `results.py`. A cap
+   without wording stops the export.
+3. Freeze, then compare version 3 and version 4 pair by pair, offline, on the tuning set, both held-back sets and
+   the saved reads. List every pair whose band, score, caps or exclusion changed. **Pass:** no pair gains a band or
+   a new proposal, every change is one R1 to R3 explains, and no withheld id appears in a pair or an exclusion.
+   Measured before the change: R1 would hold 0 of the 17 party proposals across the three labelled sets, so the 6 Nov
+   and 9 Nov figures should carry over unchanged. Record that they are version 3 figures matched by version 4, not
+   a new blind check.
+4. **Fail:** version 1 stays on version 3, with these gaps listed. No retuning against the same sets to pass.
+
+**Order.** Version 4 goes on its own branch. The exporter refuses reports from another rules version
+(`results.py:116`), so any re-export for step 11 must happen from version 3 first. After version 4 merges, an export
+needs a fresh scan of both systems, which needs the person's approval. "The matcher stays at rules version 3" under
+"Version 1" changes only once step 3 passes.
+
+| # | Step | Hours | Needs |
+|---|---|---|---|
+| W1 | Docs-only corrections on version 3 (above) | 1 | |
+| W2 | Tuning cases, R1 to R3 with tests, `RULES_VERSION` "4", cap wording | 3 | 15 Nov handover done |
+| W3 | Version 3 against version 4 comparison, recorded here | 1 | W2 frozen |
+| W4 | Rescan both systems, re-export, review any changed pair | 1 | W3 passed; the person's approval |
+
 ## Held-back set (step 4b)
 
 The one honest check of the matcher: data the tuner never saw, run once against the frozen rules. Two sets so far,
