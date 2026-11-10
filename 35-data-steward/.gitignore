@@ -10,3 +10,6 @@ local/
 # Run output
 runs/
 results.json
+
+# Local working folder, not committed
+how-duplicates-are-found/
