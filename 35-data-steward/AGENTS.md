@@ -46,6 +46,10 @@ Work on a branch in your fork (`origin`) and open a pull request into `theschool
 push to `upstream`, never merge your own pull request. Fill in the pull request template's checklist. Commits are
 the record of the seat's work, so make one per logical change.
 
+Keep pull requests short: the instructor wants small ones to review. One step or task per pull request, not a run
+of them. When the previous pull request is still open, start the next branch from its branch and say in the
+description which pull request it builds on; until that one merges, the new one also shows its commits.
+
 ## Layout
 
 | Path | What it is |
