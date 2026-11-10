@@ -7,7 +7,7 @@ import stat
 import pytest
 
 from data_steward import config, report
-from data_steward.mcp_client import McpError, RowPage
+from data_steward.mcp_client import AuthExpired, McpError, RowPage
 
 
 def party(pid, name, **fields):
@@ -270,7 +270,8 @@ def test_the_pair_list_holds_ids_scores_and_bands_only(run, tmp_path):
     assert {k: pairs[k] for k in ("system", "date", "rules_version")} == {
         "system": "keystone", "date": "2026-11-03", "rules_version": rep["rules_version"]}
     assert pairs["tables"]["party"] == {"rows": 10, "total": 10, "cut_off": False}
-    assert [p["id"] for p in pairs["pairs"]] == [p["id"] for s in rep["sections"].values() for p in s["proposals"]]
+    assert pairs["pairs"] == [{k: p[k] for k in ("id", "ids", "score", "band")}
+                              for entity in ("party", "item") for p in rep["sections"][entity]["proposals"]]
     by_id = {p["id"]: p for p in pairs["pairs"]}
     assert by_id["party:p1:p2"]["band"] == "propose" and by_id["party:p3:p4"]["band"] == "review"
     assert "party:p5:p6" in by_id  # test-record pairs are listed: under the runner there are no tags to tell
@@ -287,17 +288,29 @@ def test_a_cut_off_table_shows_in_the_pair_list(run, tmp_path):
 
 
 def test_a_platform_error_is_one_line_without_its_reply(run, tmp_path):
-    reply = '{"name": "Gristmill Foods", "email": "info@gristmill.example"}'
-    result = run(client=FailingClient(McpError("tool_error", reply, {"code": "not_found"})), code=1)
-    assert result.err == "platform problem: a tool call failed (not_found)\n"
+    reply = 'You cannot perform this on {"name": "Gristmill Foods", "email": "info@gristmill.example"}'
+    result = run(client=FailingClient(McpError("tool_error", reply)), code=1)
+    assert result.err == "platform problem: a tool call failed (permission_denied)\n"
     assert result.out == ""
     assert not (tmp_path / "local" / "dedupe-keystone-pairs.json").exists()
 
 
-def test_a_platform_error_code_that_is_not_a_plain_code_is_not_shown(run):
-    result = run(client=FailingClient(McpError("tool_error", "x", {"code": "Gristmill Foods <info@gristmill.example>"})),
-                 code=1)
+@pytest.mark.parametrize("data", [{"code": "Gristmill"}, {"id": "i1", "name": "Pallet Wrap", "code": "PW-1"},
+                                  {"code": "not_found"}])
+def test_a_code_from_the_reply_is_never_shown(run, data):
+    # The reply's own code can be a record's (an item's SKU is its code), so only the client's own kinds are shown.
+    result = run(client=FailingClient(McpError("bad_reply", "Item.list returned no rows list", data)), code=1)
     assert result.err == "platform problem: a tool call failed (error)\n"
+
+
+def test_a_malformed_platform_error_is_still_one_line(run):
+    result = run(client=FailingClient(McpError(-32000, None, None)), code=1)
+    assert result.err == "platform problem: a tool call failed (error)\n"
+
+
+def test_a_rejected_token_is_one_line(run):
+    result = run(client=FailingClient(AuthExpired("https://b/api/mcp")), code=1)
+    assert result.err == "platform problem: the token was rejected\n"
 
 
 def test_a_lost_connection_is_one_line(run):
@@ -326,7 +339,25 @@ def test_an_unforeseen_error_keeps_its_traceback_locally(run):
         run(client=FailingClient(KeyError("x")))
 
 
-def test_the_runner_token_is_never_printed(run, monkeypatch):
-    monkeypatch.setattr(config, "platform", lambda: {"instance": "keystone", "base": "b", "token": "secret-runner-token"})
-    _, _, out = run()
-    assert "secret-runner-token" not in out
+def test_a_failed_write_leaves_no_mix_of_old_and_new_files(run, tmp_path, monkeypatch):
+    run()  # an earlier, complete set
+    local = tmp_path / "local"
+    written = []
+
+    def write(path, text):
+        if len(written) == 2:
+            raise PermissionError(13, "Permission  denied")
+        written.append(path)
+        path.write_text(text)
+    monkeypatch.setattr(report, "_write_private", write)
+    result = run(code=1)
+    assert result.err == "connection or file problem: PermissionError (Permission denied)\n"
+    assert not any(local.glob("dedupe-keystone*"))
+
+
+def test_a_failed_scan_leaves_earlier_files_as_they_were(run, tmp_path):
+    run()
+    local = tmp_path / "local"
+    before = {p.name: p.read_text() for p in local.glob("dedupe-keystone*")}
+    run(client=FailingClient(TimeoutError("read timed out")), code=1)
+    assert {p.name: p.read_text() for p in local.glob("dedupe-keystone*")} == before

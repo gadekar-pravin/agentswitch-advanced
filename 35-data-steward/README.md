@@ -35,7 +35,8 @@ uv run python -m data_steward.dedupe --instance keystone     # or suryodaya; rea
 Reads every party and item on one system and writes `local/dedupe-<instance>.json` (the record of truth),
 `local/dedupe-<instance>.md` (made from it) and `local/dedupe-<instance>-pairs.json` (every listed pair as its pair
 id, the two record ids, score and band, plus whether each table was cut off), readable by you only. Compare pairs
-without regard to the order of the two ids. The course harness adds `--prompt "<request>"`; the command accepts it
+without regard to the order of the two ids. The pair list includes test-record pairs, which the summary leaves out of
+its band counts, so it can hold more pairs than those counts add up to. The course harness adds `--prompt "<request>"`; the command accepts it
 and runs the same scan whatever the request says (no model yet). Nothing on the platform changes: a person decides,
 and makes any change through the platform.
 
