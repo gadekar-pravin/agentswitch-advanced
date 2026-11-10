@@ -32,8 +32,11 @@ The probe writes the full tool list to `local/`, which is git-ignored because it
 ```bash
 uv run python -m data_steward.dedupe --instance keystone     # or suryodaya; read-only
 ```
-Reads every party and item on one system and writes `local/dedupe-<instance>.json` (the record of truth) and
-`local/dedupe-<instance>.md` (made from it), readable by you only. Nothing on the platform changes: a person decides,
+Reads every party and item on one system and writes `local/dedupe-<instance>.json` (the record of truth),
+`local/dedupe-<instance>.md` (made from it) and `local/dedupe-<instance>-pairs.json` (every listed pair as its pair
+id, the two record ids, score and band, plus whether each table was cut off), readable by you only. Compare pairs
+without regard to the order of the two ids. The course harness adds `--prompt "<request>"`; the command accepts it
+and runs the same scan whatever the request says (no model yet). Nothing on the platform changes: a person decides,
 and makes any change through the platform.
 
 Two optional input files in `local/` (git-ignored; the run reads them and never writes them). To reproduce another

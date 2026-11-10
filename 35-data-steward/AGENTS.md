@@ -79,8 +79,13 @@ uv run python -m data_steward.dedupe --instance keystone   # read-only scan; ask
 ## The duplicate report
 
 - `python -m data_steward.dedupe` reads every party and item on one system (the harness runner's, else the one
-  given, else Keystone) and writes `local/dedupe-<instance>.json` and `.md`, owner-only. It always writes to
-  `local/`: the report holds real party data. Standard output is counts only, safe for a pull request description.
+  given, else Keystone) and writes `local/dedupe-<instance>.json`, `.md` and `-pairs.json` (pair ids, record ids,
+  score, band; for a grader), owner-only. It always writes to `local/`: the report holds real party data, and record
+  ids are platform data too. Standard output is counts only, safe for a pull request description; never add ids to it.
+- `--prompt "<request>"`, which the course harness appends, is accepted and ignored: every request gets the same
+  read-only scan until a model reads requests (version 1). A failure ends with one line on standard error and exit
+  code 1. That line never quotes a platform reply (it can hold record data); under the runner an unforeseen error
+  names only its type.
 - It reads `local/test-tags.txt` (one confirmed test-run tag per line, the tag first, then where it came from) and
   `local/dedupe-labels.json` (`{"<pair id>": "accepted" | "rejected"}`). It never writes either. Add a tag only when
   a read has confirmed it; never hard-code one in the repository.
