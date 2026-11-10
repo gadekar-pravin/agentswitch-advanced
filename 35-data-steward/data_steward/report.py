@@ -31,7 +31,7 @@ LABELS = ("accepted", "rejected")
 SAY = {
     # evidence: a value both records share
     "customer_code": "customer code", "email": "email", "phone": "phone", "website": "website",
-    "city_postal": "city and postal code", "name": "same name", "near_name": "similar names", "code": "code or SKU",
+    "city_postal": "city and postal code", "name": "matching name", "near_name": "similar names", "code": "code or SKU",
     "category": "category", "uom": "unit of measure",
     # held at review
     "names differ slightly": "similar names without a matching customer code", "roles differ": "different roles",
@@ -156,14 +156,19 @@ def summary(report: dict) -> dict:
 
 
 _MARKDOWN = re.compile(r"([\\`*_\[\]()!|~#])")
+# Text a GitHub-style renderer turns into a link or a mention by itself, escapes or not.
+_AUTOLINK = re.compile(r"(?i)://|\b(?:mailto|xmpp):|www\.|@")
 
 
 def _cell(value) -> str:
     """Record text as literal Markdown: one line, at most 200 characters, with HTML and Markdown syntax escaped, so a
-    value can neither break a table nor render as a link, an image or markup."""
+    value can neither break a table nor render as a link, an image or markup. A value a renderer would link by itself
+    (a web address, an email, an @mention) becomes a code span, where nothing is linked."""
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
     text = " ".join(str(text).split())
     text = text if len(text) <= 200 else text[:199] + "…"
+    if _AUTOLINK.search(text):
+        return _code(text)
     return _MARKDOWN.sub(r"\\\1", html.escape(text, quote=False))
 
 
@@ -226,13 +231,13 @@ def _label_text(p) -> str:
 def _rows_md(pairs) -> list[str]:
     """One row per pair, for pairs a person has already labelled and for test records. The full detail of each is in
     the JSON report."""
-    lines = ["| Pair | Records | Score | Confidence | Evidence | Why held at review | Person's label |",
-             "|---|---|---|---|---|---|---|"]
+    lines = ["| Pair | Records | Score | Confidence | Evidence | Why held at review | Suggested to keep | Person's label |",
+             "|---|---|---|---|---|---|---|---|"]
     for p in pairs:
         a, b = p["ids"]
         lines.append(f"| {_code(p['id'])} | {_cell(p['names'][a])} / {_cell(p['names'][b])} | {p['score']:.2f} | "
                      f"{p['band']} | {_say(p['signals']) or 'none'} | {_say(p['caps'])} | "
-                     f"{_label_text(p)} |")
+                     f"{_code(p['survivor']['id'])} | {_label_text(p)} |")
     return lines + [""]
 
 

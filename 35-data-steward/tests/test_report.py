@@ -2,6 +2,7 @@ import datetime as dt
 import http.client
 import json
 import os
+import re
 import stat
 
 import pytest
@@ -150,7 +151,7 @@ def test_labels_are_shown_and_change_nothing(run):
                                                                                if k != "label"}
     assert labelled["party:p1:p2"]["label"] == {"label": "accepted", "note": None}
     assert rep["labels"] == {"applied": 2, "not_in_this_run": ["party:x:y"]}
-    assert "| 0.60 | review | same name |  | rejected (two clinics) |" in md
+    assert "| 0.60 | review | matching name |  | `p3` | rejected (two clinics) |" in md
     assert "#### Larkspur" not in md  # a labelled pair is one row, not a full block
 
 
@@ -171,7 +172,7 @@ def test_markdown_from_the_saved_json_matches(run):
 
 def test_matcher_terms_are_shown_in_plain_words_and_the_json_keeps_them(run):
     rep, md, _ = run()
-    assert "- Evidence (shared by both records): email, same name" in md
+    assert "- Evidence (shared by both records): email, matching name" in md
     assert "ruled out because: different party types (score 1.00)" in md
     assert "Selection rule: more linked records" in md
     assert section(rep)["excluded"][0]["reason"] == "individual and organisation"
@@ -219,8 +220,31 @@ def test_record_text_is_literal_markdown(run):
                   **{"note|source": "<img src=x onerror=alert(1)> **bold** [link](https://e.example)"}),
             party("p2", "Ottervale ![x](https://tracker.example/p.png)", email="a@ottervale.example")]
     _, md, _ = run(client=FakeClient({"Party": rows, "Item": ITEMS}))
-    assert "![x](" not in md and "<img" not in md and "**bold**" not in md and "[link](" not in md
-    assert "| note\\|source | &lt;img src=x onerror=alert\\(1\\)&gt; \\*\\*bold\\*\\*" in md
+    outside_code = re.sub(r"`[^`]*`", "", md)
+    assert "![x](" not in outside_code and "<img" not in outside_code and "**bold**" not in outside_code
+    assert "[link](" not in outside_code
+    # Text holding a web address is a code span, where a renderer neither links nor marks anything up.
+    assert "#### `Ottervale ![x](https://tracker.example/p.png)`" in md
+    assert "| note\\|source | `<img src=x onerror=alert(1)> **bold** [link](https://e.example)` |" in md
+
+
+def test_bare_addresses_and_mentions_are_not_linked(run):
+    rows = [party("p1", "Wren & Co", email="desk@wren.example", website="www.wren.example", note="ask @wrenlead"),
+            party("p2", "Wren & Co", email="desk@wren.example", website="https://wren.example", note="plain note")]
+    _, md, _ = run(client=FakeClient({"Party": rows, "Item": ITEMS}))
+    outside_code = re.sub(r"`[^`]*`", "", md)
+    for value in ("www.wren.example", "https://wren.example", "@wrenlead"):
+        assert value not in outside_code and value in md
+    assert "| plain note |" in md and "Wren &amp; Co" in md  # ordinary text is still escaped, not a code span
+
+
+def test_every_pair_is_shown_once(run):
+    for labels in (None, {"party:p1:p2": "accepted", "party:p3:p4": "rejected"}):
+        rep, md, _ = run(labels=labels)
+        body = md[md.index("## How to read this report"):]
+        for s in rep["sections"].values():
+            for p in s["proposals"] + s["excluded"]:
+                assert body.count(f"`{p['id']}`") == 1, p["id"]
 
 
 def test_test_tags_are_shown_with_where_they_came_from(run):
