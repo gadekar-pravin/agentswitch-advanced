@@ -1,7 +1,8 @@
 # First task plan: duplicate-party and duplicate-item report
 
 Due 15 Nov 2026. Written 3 Nov, revised after review the same day, amended after the Keystone read (step 3), and
-brought up to date after steps 5 and 6 and the Suryodaya read the same day.
+brought up to date after steps 5 and 6 and the Suryodaya read the same day. Updated 10 Nov with the instructor's
+answers and the Eval Harness seat's agent contract (see "Checks that could change this plan").
 
 ## What we deliver
 
@@ -36,8 +37,8 @@ So live data cannot tune or check the matcher. Made-up data does that instead: a
 
 | Question | Decision | Why |
 |---|---|---|
-| Where proposals live | Local JSON plus Markdown. No platform records for 15 Nov. | Creating a shared record needs the person's approval each time, and we do not yet know what the Eval Harness seat will check. If they need a record, add an opt-in publish step later and leave the report as it is. |
-| How matches are found | Rules only: normalize, group by shared keys, score. No model. | The same data always gives the same result, it costs no tokens, it works offline, and a verifier can recompute it. A model is worth adding later only if the checks show the rules miss real duplicates. |
+| Where proposals live | Local JSON plus Markdown. No platform records for 15 Nov. From version 1: one approval request per proposal, assigned to a named person, alongside the report. | The instructor (10 Nov) plans to grade the first task with no writes, and recommends the approval request as the proposal record, since the platform has no proposal entity. Our login has no tool that creates one directly, so how to create it is asked; until answered nothing is written. Creating a shared record needs the person's approval, and the publish step gets its own reviewed write path. |
+| How matches are found | Rules only: normalize, group by shared keys, score. No model. | The same data always gives the same result, it costs no tokens, it works offline, and a verifier can recompute it. The instructor (10 Nov) allows a model to understand requests and explain proposals, as long as the scoring rules stay fixed so confidences repeat; that is version 1 and never touches matching or scores. |
 | What confidence means | A score from 0 to 1 with the signals that produced it, and one band. **Propose:** 0.9 or more, with no conflict and no cap. **Review:** 0.6 to below 0.9, or 0.9 or more with a conflict or a cap (a conflict between strong values, a role difference, or party names that are only near). **Dropped:** below 0.6, whatever the conflicts; counted in the report, not listed. | It is a rule score, not a probability, and the report says so. The held-back set of made-up data gives how many in each band were right (step 7). Those figures come from made-up data that holds many duplicates, so the report says they do not predict how often a live proposal is right. A band with no checked examples is reported as unchecked. |
 | Pairs or groups | Pairs. A record in two proposals is flagged so both are reviewed together. | A matches B and B matches C does not mean A matches C. |
 | Pair identity | Party or item, plus the two record ids, sorted. The report is sorted by band, then pair id, so two runs on the same data write the same file. | Review labels must still apply after the weights are tuned. |
@@ -230,12 +231,44 @@ only this plan.
   in this plan changes.
 - **The Eval Harness seat's answer.** If their check needs a platform record per proposal, add an opt-in publish
   step that needs the person's OK each run. If their copies hold seeded duplicates, use those as a further check.
+  Answered 10 Nov by the instructor: the data has a few natural look-alike parties and no planted answers, so we
+  keep building our own fixtures (the tuning and held-back sets). A harness run writes to a copy and discards it.
+- **The Eval Harness seat's agent contract.** Read 10 Nov in their pull request (#21,
+  `34-eval-harness/docs/processed/evaluation/agent-contract.md`, not yet merged). Their harness runs one command per
+  request with `--prompt "<request>"` added, passes the runner's `AGENTSWITCH_*` and `OPENAI_*` values, and judges
+  only the platform state after the run; a local report file cannot be graded. A non-zero exit is an
+  infrastructure failure, and an optional last line `AGENT_RESULT {...}` is scored for honesty, never for pass or
+  fail. What it means here: our code already uses the runner's token and never logs in under the runner, but there
+  is no `--prompt` entry point yet. That entry point, with a model reading the request and the fixed rules doing
+  the matching, is a version 1 step.
 - **What the course harness checks.** Read 7 Nov: `../34-eval-harness/TASK_FORMAT.md`, written by the Eval Harness
   seat, says a task passes only when a check on the resulting data confirms it, never because of the agent's wording.
   A report in `local/` is not platform data, so no task can pass on it alone. For version 1 and the 12-task suite,
   each proposal probably has to become a record on the platform, which makes the publish step above likely rather
   than optional. That step needs its own reviewed write path; the write guard stays as it is for every other tool.
-- **Questions for the instructor.** Drafted 7 Nov; record the answers here and change the plan to match.
+  The instructor's plan for 15 Nov (10 Nov, to be confirmed in the seat channel before then): a harness task is
+  judged on the correct duplicate pairs found against a labelled set, with a confidence for each pair and no
+  writes. With no writes, the pairs must reach the grader some other way than platform state, so which output the
+  grader reads (a printed list in a set format, a results file, or another form) is asked; build to that answer
+  before 15 Nov.
+- **Questions for the instructor.** Drafted 7 Nov; record the answers here and change the plan to match. Answers to
+  1 to 5 came 10 Nov; where the brief is silent the instructor marked the answer "recommended". 6 and 7 are still
+  open.
+  - Answer 1: one approval request per merge proposal, assigned to a named person (recommended). The platform has
+    no proposal entity; the approval request is its human-in-the-loop item. Whether our login may create one was
+    not checked by the course team. A read-only probe on 10 Nov found no tool that creates one directly on either
+    system. Some agent records refer to one, so the platform may create it itself when an agent action needs
+    approval (field names in `local/tools-<instance>.json`). Asked how seat 35 should create one; until answered,
+    no write is made. Escalations (below) are the fallback.
+  - Answer 2: a few natural look-alike parties and no planted answers; build our own fixtures.
+  - Answer 3: use the fields the schemas declare as required (recommended). This matches "Where required fields
+    come from" below.
+  - Answer 4: a report plus the approval request is enough; a UI is optional.
+  - Answer 5: a model may understand requests and explain proposals; keep the scoring rules fixed so confidences
+    repeat.
+  - Also answered (to the seat lead): the platform does not lower-case party names when they come in, and no
+    change is planned. Compare on a normalised key and leave stored values unchanged. `norm_name` already does this
+    (lower case, trimmed, punctuation and legal endings such as Pvt Ltd dropped, plus accents and word order).
   1. Where proposals go: should each be a record on the platform, and may the seat's login create it? Is one agent
      escalation per proposal, assigned to a person (see below), the record the course expects?
   2. Do the test copies of Suryodaya and Keystone hold planted duplicates, missing fields or orphan records, or do
@@ -255,7 +288,8 @@ only this plan.
   entity's fields, types and which are required. The missing-fields check reads that list for parties and items
   instead of choosing fields by hand. What the endpoint returns is platform-derived and goes in `local/`, never in
   the repository.
-- **Escalations as the proposal record.** Seen 7 Nov in another seat's public repo (`mkthoma/files_agent`, the Files
+- **Escalations as the proposal record.** Now the fallback: the instructor recommends approval requests (answer 1).
+  Seen 7 Nov in another seat's public repo (`mkthoma/files_agent`, the Files
   seat): its agent hands each case to a named person by raising an agent escalation, and its harness checks those
   escalations. The tool list this seat's probe saved on 6 Nov holds the same raise, assignee and escalation read
   tools on both systems (names in `local/tools-<instance>.json`). One escalation per merge proposal, naming both
