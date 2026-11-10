@@ -40,6 +40,17 @@ its band counts, so it can hold more pairs than those counts add up to. The cour
 and runs the same scan whatever the request says (no model yet). Nothing on the platform changes: a person decides,
 and makes any change through the platform.
 
+The instructor scores `results/dedupe_pairs.json`, committed in a pull request. Make it from the saved reports,
+with no platform call:
+```bash
+uv run python -m data_steward.results                        # both systems; or --instance suryodaya
+```
+One entry per proposed pair: `kind`, `id_a`, `id_b`, `confidence` and `reason`, and no names, emails or other record
+values. Pairs a person labelled "rejected" and test-record pairs are left out. A review pair's confidence is capped at
+0.6, since a pair held at review can score 1.0; today every review pair gets 0.6. Standard output gives counts per
+system and kind (listed, left out, written) and the number of rejected labels that match no listed pair: check it is
+0 before committing the file.
+
 Two optional input files in `local/` (git-ignored; the run reads them and never writes them). To reproduce another
 person's report, get both from them privately:
 

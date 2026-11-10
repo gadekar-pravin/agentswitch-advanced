@@ -14,7 +14,8 @@ It runs on either system, one per run; both have been read. The report says whic
 
 **Handed over on 15 Nov:** the merged pull request (code, tests, this plan), a summary with counts only in the pull
 request description (rows read, proposals per band, exclusions per reason, no record data), the full report sent to
-the seat lead directly, not through the repository, and the pair list in whatever form the grader reads (step 9).
+the seat lead directly, not through the repository, and `results/dedupe_pairs.json`, the file the instructor
+scores (step 11), with the rules version and the matcher commit in the pull request description.
 
 ## What the Keystone read showed
 
@@ -146,8 +147,9 @@ count makes the survivor rule skip the reference step and say so. Either way, ma
 | 6 | JSON and Markdown report and the `python -m data_steward.dedupe` command. Under the harness runner the instance comes from the runner. The report states rows read, whether any table was cut off, and that an incomplete scan does not mean there are no duplicates. | 3 | done; run on both systems 3 Nov |
 | 7 | Tune the weights and the 0.6 and 0.9 cuts on the tuning set, then freeze the whole matcher (code and settings, by commit) before opening the held-back set. Run once on the held-back set and report how many examples each band had, wrong proposals and known misses, as a check on made-up data only. Any later change that can affect which pairs are found, their scores, bands or exclusions voids that check and needs a new held-back set from the other person. Run on Keystone; one person and the seat lead review every pair it reports. | 2 | rules version 2 frozen 3 Nov and checked once 6 Nov; rules version 3 frozen at `457799b` 6 Nov and checked once 9 Nov on a new set (see "Held-back runs") |
 | 8 | README and AGENTS.md updates, pull request, review | 2 | pull request open, review requested |
-| 9 | Grader output, by 12 Nov. Built 10 Nov: `--prompt` accepted and ignored, one-line errors with exit code 1 (no platform reply or reply code quoted), and `local/dedupe-<instance>-pairs.json` (pair id, record ids, score, band, and whether each table was cut off; propose and review pairs). Still open: where the grader reads it; record ids stay off standard output until that is known. Plan as written: The command accepts `--prompt` and ignores its value (no model), so a harness run does not fail on an unknown argument, and runs the same scan. It writes the pair list in the form the grader reads: pair id, the two record ids, score and band, no names or other record data. Until the format is known, build a plain JSON list and adapt it to the answer. Output only: rules version 3 is untouched. | 2 | built; where the list goes waits on the grader's format |
-| 10 | One rehearsal harness run by 12 Nov, only if the grader is the harness and only with the person's approval, so the first run is not the graded one (one run per seat every 3 days). | 0.5 | step 9 |
+| 9 | Grader output, by 12 Nov. Built 10 Nov: `--prompt` accepted and ignored, one-line errors with exit code 1 (no platform reply or reply code quoted), and `local/dedupe-<instance>-pairs.json` (pair id, record ids, score, band, and whether each table was cut off; propose and review pairs). Still open: where the grader reads it; record ids stay off standard output until that is known. Plan as written: The command accepts `--prompt` and ignores its value (no model), so a harness run does not fail on an unknown argument, and runs the same scan. It writes the pair list in the form the grader reads: pair id, the two record ids, score and band, no names or other record data. Until the format is known, build a plain JSON list and adapt it to the answer. Output only: rules version 3 is untouched. | 2 | built; superseded for grading by step 11 (instructor's answer, 10 Nov) |
+| 10 | One rehearsal harness run by 12 Nov, only if the grader is the harness and only with the person's approval, so the first run is not the graded one (one run per seat every 3 days). | 0.5 | dropped: the grader is not the harness (10 Nov) |
+| 11 | Results file, by 13 Nov. `python -m data_steward.results` writes `results/dedupe_pairs.json` from the saved reports, offline: propose and review pairs, except pairs a person rejected and test-record pairs; confidence is the score, capped at 0.6 for a review pair; the reason from fixed wording. Before the file is committed: the seat lead reviews the rejections (8 are copy-number names, which another seat counts as duplicates), the EV pair is labelled, and the instructor is asked which system the labelled set is on and whether test-run records count. Output only: rules version 3 is untouched. | 2 | exporter built 10 Nov; file waits on the label review and the instructor's answers |
 | | Buffer | 1.5 | |
 
 **Not for 15 Nov:** a model in the loop, platform records, merges, missing-field
@@ -262,6 +264,13 @@ only this plan.
   - Who labels the set, on which system, and do repeated test-run records count as duplicates? Under the runner
     there is no test-tags file, so tagged pairs show as ordinary pairs.
   If the grader reads platform state after all, that conflicts with "no writes" and goes back to the instructor.
+  Answered 10 Nov: a results file, `35-data-steward/results/dedupe_pairs.json`, in a pull request, scored against
+  the instructor's labelled set for items and parties; one entry per pair with kind, the two ids, a confidence from
+  0 to 1 (both the pairs and how well the confidence matches are scored) and a short reason; no names, GSTINs or
+  emails; uncertain pairs may be left out, and a listed low-confidence pair costs less than a confident wrong one. A
+  matcher without a model is accepted, and the harness's `--prompt` contract does not apply to seat 35 for 15 Nov.
+  Seat 35 creates no approval requests for the first task. Still open: which system the labelled set is on, and
+  whether repeated test-run records count (step 11).
 - **Questions for the instructor.** Drafted 7 Nov; record the answers here and change the plan to match. Answers to
   1 to 5 came 10 Nov; where the brief is silent the instructor marked the answer "recommended". 6 and 7 are still
   open.
