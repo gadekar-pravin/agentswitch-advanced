@@ -61,7 +61,7 @@ def test_entries_follow_the_instructors_format(setup):
     pairs = by_pair(found)
     assert pairs[("p1", "p2")]["confidence"] == 1.0  # propose keeps its score
     assert pairs[("p3", "p4")] == {"kind": "party", "id_a": "p3", "id_b": "p4", "confidence": 0.6,
-                                   "reason": "same name"}
+                                   "reason": "matching name"}
     # a capped pair scoring 1.0 claims no more than a review pair
     assert pairs[("q1", "q2")]["confidence"] == dedupe.REVIEW
     assert pairs[("q1", "q2")]["reason"].endswith("held at review: different phone numbers")

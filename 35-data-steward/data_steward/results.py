@@ -34,7 +34,7 @@ RESULTS = config.ROOT / "results" / "dedupe_pairs.json"
 # Evidence the two records share.
 SIGNALS = {
     "customer_code": "same customer code", "email": "same email", "phone": "same phone", "website": "same website",
-    "city_postal": "same city and postal code", "name": "same name", "near_name": "similar names",
+    "city_postal": "same city and postal code", "name": "matching name", "near_name": "similar names",
     "code": "same code or SKU", "category": "same category", "uom": "same unit of measure",
 }
 # Why a pair is held at review.
