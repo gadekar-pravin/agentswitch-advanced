@@ -57,7 +57,12 @@ person's report, get both from them privately:
 - `local/test-tags.txt`: confirmed test-run tags, one per line (the tag, then where it was seen). Without it, pairs of
   test-run records are not set apart and show up as pairs to review.
 - `local/dedupe-labels.json`: a person's verdicts, `{"<pair id>": "accepted" | "rejected"}`. Without it, every pair
-  shows as awaiting a decision.
+  shows as awaiting a decision, and `results` lists the pairs that person rejected.
+
+Anyone with a seat 35 login can rerun the scan from this repository: everything that decides the pairs is committed,
+and only `.env` and `local/` are not. The same commit (same rules version) run on unchanged data finds the same pairs
+with the same scores and bands. Two runs write the same file only when the rows, the date, the labels and the test
+tags all match, so a run on a later day, or after someone edits a record, differs.
 
 What the Markdown report shows:
 
